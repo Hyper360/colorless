@@ -1,0 +1,28 @@
+<!-- Come AI generated template page (html is boooooorrrriiiinnnggg) -->
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Raylib Web Game</title>
+    <style>
+        body { margin: 0; background-color: black; }
+        canvas.emscripten { border: 0px none; background-color: black; display: block; margin: 0 auto; }
+    </style>
+  </head>
+  <body>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <script type='text/javascript'>
+      var Module = {
+        print: (function() {
+          return function(text) { console.log(text); };
+        })(),
+        canvas: (function() {
+          var canvas = document.getElementById('canvas');
+          return canvas;
+        })()
+      };
+    </script>
+    {{{ SCRIPT }}}
+  </body>
+</html>
