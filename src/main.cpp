@@ -9,6 +9,7 @@ void webWrapper(void *game_p) {
   Game *game = static_cast<Game *>(game_p);
   game->stateManager();
 }
+
 #endif
 
 int main() {

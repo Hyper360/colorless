@@ -22,9 +22,9 @@ SRCS = $(wildcard src/*.cpp) # Recursively linking the source files
 
 OBJS = $(SRCS:.cpp=.o) # Turning Source files into object files
 
-EXEC = ProjectName # Path to the binary
-WASM_EXEC = ProjectName.html
-WIN_EXEC = ProjectName.exe
+EXEC = Colorless # Path to the binary
+WASM_EXEC = Colorless.html
+WIN_EXEC = Colorless.exe
 
 PLATFORM ?= LINUX
 
@@ -51,7 +51,7 @@ clean:
 move:
 	mv $(EXEC) release/linux/
 	cp -r res/* release/linux/res/
-	cp ProjectNameLogo.png release/linux/
+	cp ColorlessLogo.png release/linux/
 
 .PHONY:
 	all clean
@@ -69,7 +69,7 @@ clean:
 move:
 	mv *.wasm *.js *.html release/web/
 	cp -r res/* release/web/res/
-	cp ProjectNameLogo.png release/web/
+	cp ColorlessLogo.png release/web/
 
 .PHONY:
 	all clean
@@ -92,7 +92,7 @@ move:
 	@mkdir -p release/windows/res/
 	mv $(WIN_EXEC) release/windows/
 	cp -r res/* release/windows/res/
-	cp ProjectNameLogo.png release/windows/
+	cp ColorlessLogo.png release/windows/
 
 .PHONY:
 	all clean
