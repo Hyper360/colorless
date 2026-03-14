@@ -23,9 +23,12 @@ void Game::level() {
     state = GameState::EXIT;
   }
 
+  p.update();
+
   BeginDrawing();
-  ClearBackground(RED);
-  DrawText("Level Template", 0, 0, 24, ORANGE);
+  ClearBackground(WHITE);
+  p.draw();
+  DrawRectangleRec(r, BLACK);
   EndDrawing();
 }
 
