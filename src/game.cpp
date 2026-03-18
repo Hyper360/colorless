@@ -21,11 +21,13 @@ void Game::loadLevel(const std::string &path) {
   std::ifstream f(path);
   if (!f.is_open() || f.peek() == std::ifstream::traits_type::eof())
     return;
-  json j = json::parse(f);
-  for (auto &t : j["tiles"])
-    levelTiles.push_back({(float)t["x"].get<int>() * Config::TILESIZE,
-                          (float)t["y"].get<int>() * Config::TILESIZE,
-                          Config::TILESIZE, Config::TILESIZE});
+  try {
+    json j = json::parse(f);
+    for (auto &t : j["tiles"])
+      levelTiles.push_back({(float)t["x"].get<int>() * Config::TILESIZE,
+                            (float)t["y"].get<int>() * Config::TILESIZE,
+                            Config::TILESIZE, Config::TILESIZE});
+  } catch (...) {}
 }
 
 std::string Game::newLevelPath() {
