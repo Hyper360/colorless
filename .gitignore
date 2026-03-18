@@ -1,0 +1,14 @@
+# Build outputs
+Colorless
+Colorless.exe
+Colorless.html
+*.o
+*.wasm
+*.js
+
+# Downloaded headers
+include/json.hpp
+
+# Levels (runtime data, not source)
+levels/*
+!levels/.gitkeep
