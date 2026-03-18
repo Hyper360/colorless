@@ -37,7 +37,7 @@ void LevelEditor::save() {
 void LevelEditor::load() {
   tiles.clear();
   std::ifstream f(levelPath);
-  if (!f.is_open())
+  if (!f.is_open() || f.peek() == std::ifstream::traits_type::eof())
     return;
   json j = json::parse(f);
   for (auto &t : j["tiles"])

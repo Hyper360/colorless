@@ -19,7 +19,7 @@ void Game::loadLevel(const std::string &path) {
   levelTiles.clear();
   currentLevelPath = path;
   std::ifstream f(path);
-  if (!f.is_open())
+  if (!f.is_open() || f.peek() == std::ifstream::traits_type::eof())
     return;
   json j = json::parse(f);
   for (auto &t : j["tiles"])
@@ -65,8 +65,7 @@ void Game::levelSelect() {
     state = GameState::LEVEL_EDITOR;
   } else if (selector->wantsNew()) {
     std::string path = newLevelPath();
-    std::ofstream f(path);
-    f << "{\"tiles\": []}";
+    { std::ofstream f(path); f << "{\"tiles\": []}"; } // close before editor reads it
     editor = std::make_unique<LevelEditor>(path);
     selector->refresh();
     state = GameState::LEVEL_EDITOR;
