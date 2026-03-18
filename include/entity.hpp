@@ -15,6 +15,7 @@ class Entity {
   Rectangle body;
   Vector2 acceleration = {0, Config::ACCELERATION};
   Vector2 velocity = Vector2Zero();
+  bool grounded = false;
 
 public:
   Entity(Vector2 pos);
