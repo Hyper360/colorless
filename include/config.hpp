@@ -10,4 +10,5 @@ inline constexpr float ACCELERATION{50.0f * TILESIZE};
 inline constexpr float JUMPIMPULSE{-10.0f * TILESIZE};
 inline constexpr float FRICTION{6.0f * TILESIZE};
 inline constexpr float MAXSPEED{TILESIZE * 10.0f};
+inline constexpr float AIR_CONTROL{0.3f}; // fraction of ground accel available in air
 } // namespace Config
