@@ -1,4 +1,5 @@
 #include "../include/entity.hpp"
+#include <cmath>
 #include <stdio.h>
 
 Entity::Entity(Vector2 pos) {
@@ -28,20 +29,24 @@ int getDir(float val) { return (val != 0) ? val / std::abs(val) : 0; }
 void Entity::update() {
   acceleration = Vector2Zero();
 
-  if (IsKeyDown(KEY_A)) {
-    moveX(DIR::LEFT);
-  }
-  if (IsKeyDown(KEY_D)) {
-    moveX(DIR::RIGHT);
-  }
-  if (IsKeyPressed(KEY_W)) {
+  // Horizontal: full acceleration on ground, reduced in air
+  float accelMult = grounded ? 1.0f : Config::AIR_CONTROL;
+  if (IsKeyDown(KEY_A))
+    acceleration.x = DIR::LEFT * Config::ACCELERATION * accelMult;
+  if (IsKeyDown(KEY_D))
+    acceleration.x = DIR::RIGHT * Config::ACCELERATION * accelMult;
+
+  // Jump only when grounded
+  if (IsKeyPressed(KEY_W) && grounded)
     velocity.y = Config::JUMPIMPULSE;
-  }
+
+  // Friction only on the ground — in air momentum carries freely
+  if (grounded)
+    acceleration.x += -Config::FRICTION * getDir(velocity.x);
 
   acceleration.y += Config::GRAVITY;
 
-  acceleration.x += (-Config::FRICTION * getDir(velocity.x));
-
+  // Integrate velocity
   velocity.x += acceleration.x * GetFrameTime();
   velocity.x = Clamp(velocity.x, -Config::MAXSPEED, Config::MAXSPEED);
   velocity.y += acceleration.y * GetFrameTime();
@@ -49,8 +54,12 @@ void Entity::update() {
   body.x += velocity.x * GetFrameTime();
   body.y += velocity.y * GetFrameTime();
 
-  if (body.y >= GetScreenHeight() - 50) {
-    body.y = GetScreenHeight() - 50;
+  // Reset grounded — set again below if we land this frame
+  grounded = false;
+
+  if (body.y >= GetScreenHeight() - body.height) {
+    body.y = GetScreenHeight() - body.height;
     velocity.y = 0;
+    grounded = true;
   }
 };
