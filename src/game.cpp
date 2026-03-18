@@ -1,48 +1,129 @@
 #include "../include/game.hpp"
+#include "../include/json.hpp"
 #include "../include/raylib/raylib.h"
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+using json = nlohmann::json;
+namespace fs = std::filesystem;
 
-Game::Game() {}
+// ---- Setup ---------------------------------------------------------------
+
+Game::Game() {
+  if (!fs::exists("levels/"))
+    fs::create_directory("levels/");
+  selector = std::make_unique<LevelSelector>();
+}
+
+void Game::loadLevel(const std::string &path) {
+  levelTiles.clear();
+  currentLevelPath = path;
+  std::ifstream f(path);
+  if (!f.is_open())
+    return;
+  json j = json::parse(f);
+  for (auto &t : j["tiles"])
+    levelTiles.push_back({(float)t["x"].get<int>() * Config::TILESIZE,
+                          (float)t["y"].get<int>() * Config::TILESIZE,
+                          Config::TILESIZE, Config::TILESIZE});
+}
+
+std::string Game::newLevelPath() {
+  int n = 1;
+  while (fs::exists("levels/level" + std::to_string(n) + ".json"))
+    n++;
+  return "levels/level" + std::to_string(n) + ".json";
+}
+
+// ---- States --------------------------------------------------------------
 
 void Game::menu() {
-  if (IsKeyPressed(KEY_ENTER)) {
-    state = GameState::LEVEL;
-  }
+  if (IsKeyPressed(KEY_ENTER))
+    state = GameState::LEVEL_SELECT;
+  if (IsKeyPressed(KEY_ESCAPE))
+    state = GameState::EXIT;
 
+  const int W = GetScreenWidth(), H = GetScreenHeight();
   BeginDrawing();
-  ClearBackground(ORANGE);
-  DrawText("Menu Template", 0, 0, 24, RED);
+  ClearBackground(BLACK);
+  const char *title = "COLORLESS";
+  DrawText(title, W / 2 - MeasureText(title, 52) / 2, H / 3, 52, WHITE);
+  const char *sub = "Press ENTER";
+  DrawText(sub, W / 2 - MeasureText(sub, 22) / 2, H / 2, 22, GRAY);
   EndDrawing();
 }
 
-void Game::level() {
-  if (IsKeyPressed(KEY_ENTER)) {
+void Game::levelSelect() {
+  selector->update();
+
+  if (selector->wantsPlay()) {
+    loadLevel(selector->getSelected());
+    p = Entity({200, 200});
+    state = GameState::LEVEL;
+  } else if (selector->wantsEdit()) {
+    editor = std::make_unique<LevelEditor>(selector->getSelected());
+    state = GameState::LEVEL_EDITOR;
+  } else if (selector->wantsNew()) {
+    std::string path = newLevelPath();
+    std::ofstream f(path);
+    f << "{\"tiles\": []}";
+    editor = std::make_unique<LevelEditor>(path);
+    selector->refresh();
+    state = GameState::LEVEL_EDITOR;
+  } else if (selector->wantsBack()) {
     state = GameState::MENU;
   }
-  if (IsKeyPressed(KEY_ESCAPE)) {
-    state = GameState::EXIT;
-  }
 
-  p.update();
+  BeginDrawing();
+  selector->draw();
+  EndDrawing();
+}
+
+void Game::runLevel() {
+  if (IsKeyPressed(KEY_ESCAPE))
+    state = GameState::LEVEL_SELECT;
+
+  p.update(levelTiles);
 
   BeginDrawing();
   ClearBackground(WHITE);
+  for (auto &r : levelTiles)
+    DrawRectangleRec(r, BLACK);
   p.draw();
-  DrawRectangleRec(r, BLACK);
+  DrawText("ESC: Back", 4, 4, 14, DARKGRAY);
   EndDrawing();
 }
 
-void Game::exit() { printf("Exiting!"); }
+void Game::runLevelEditor() {
+  editor->update();
+
+  if (editor->wantsExit()) {
+    selector->refresh();
+    state = GameState::LEVEL_SELECT;
+  }
+
+  BeginDrawing();
+  editor->draw();
+  EndDrawing();
+}
+
+void Game::exit() { printf("Exiting!\n"); }
 
 void Game::stateManager() {
   switch (state) {
   case GameState::MENU:
     menu();
     break;
+  case GameState::LEVEL_SELECT:
+    levelSelect();
+    break;
   case GameState::LEVEL:
-    level();
+    runLevel();
+    break;
+  case GameState::LEVEL_EDITOR:
+    runLevelEditor();
     break;
   default:
-    printf("Invalid same state %i, quitting application", state);
+    break;
   }
 }

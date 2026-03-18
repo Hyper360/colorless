@@ -1,6 +1,7 @@
 #include "../include/config.hpp"
 #include "../include/game.hpp"
 #include "../include/raylib/raylib.h"
+#include <cstdint>
 
 #if defined(PLATFORM_WEB)
 #include <emscripten/emscripten.h>
@@ -24,7 +25,7 @@ int main() {
 #else
 
   SetTargetFPS(Config::FPS);
-  while (!WindowShouldClose()) {
+  while (!WindowShouldClose() && game.getState() != GameState::EXIT) {
     game.stateManager();
   }
 

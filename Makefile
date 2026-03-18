@@ -53,8 +53,11 @@ move:
 	cp -r res/* release/linux/res/
 	cp ColorlessLogo.png release/linux/
 
+leveledit:
+	$(CXX) $(CFLAGS) $(INCLUDE) levelEditor/levedit.cpp -o levelEditor/levEdit $(LFLAGS)
+
 .PHONY:
-	all clean
+	all clean leveledit
 endif
 
 ifeq ($(PLATFORM), WEB)

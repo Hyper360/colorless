@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "raylib/raylib.h"
 #include "raylib/raymath.h"
+#include <vector>
 
 enum DIR {
   UP = 1,
@@ -22,5 +23,5 @@ public:
   void moveY(int up);
   Vector2 getPos() { return {body.x, body.y}; }
   void draw();
-  void update();
+  void update(const std::vector<Rectangle> &level);
 };
