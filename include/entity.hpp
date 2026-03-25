@@ -16,6 +16,8 @@ class Entity {
   Vector2 acceleration = {0, Config::ACCELERATION};
   Vector2 velocity = Vector2Zero();
   bool grounded = false;
+  float coyoteTimer = 0.0f;
+  float jumpBufferTimer = 0.0f;
 
 public:
   Entity(Vector2 pos);
