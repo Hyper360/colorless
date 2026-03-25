@@ -29,6 +29,8 @@ int getDir(float val) { return (val != 0) ? val / std::abs(val) : 0; }
 void Entity::update(const std::vector<Rectangle> &level) {
   acceleration = Vector2Zero();
 
+  bool inputX = IsKeyDown(KEY_A) || IsKeyDown(KEY_D);
+
   // Horizontal: full acceleration on ground, reduced in air
   float accelMult = grounded ? 1.0f : Config::AIR_CONTROL;
   if (IsKeyDown(KEY_A))
@@ -40,15 +42,20 @@ void Entity::update(const std::vector<Rectangle> &level) {
   if (IsKeyPressed(KEY_W) && grounded)
     velocity.y = Config::JUMPIMPULSE;
 
-  // Friction only on the ground — in air momentum carries freely
-  if (grounded)
-    acceleration.x += -Config::FRICTION * getDir(velocity.x);
-
   acceleration.y += Config::GRAVITY;
 
   // Integrate velocity
   velocity.x += acceleration.x * GetFrameTime();
   velocity.x = Clamp(velocity.x, -Config::MAXSPEED, Config::MAXSPEED);
+
+  // Friction: directly move velocity toward zero (moveToward style).
+  // Only when grounded and not pressing a direction — doesn't fight input,
+  // never overshoots zero, stopping time = MAXSPEED / FRICTION.
+  if (grounded && !inputX) {
+    float decel = Config::FRICTION * GetFrameTime();
+    velocity.x = (velocity.x > 0) ? std::max(0.0f, velocity.x - decel)
+                                   : std::min(0.0f, velocity.x + decel);
+  }
   velocity.y += acceleration.y * GetFrameTime();
 
   // Reset grounded — set again below if we land this frame
