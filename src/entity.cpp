@@ -36,15 +36,36 @@ void Entity::update(const std::vector<Rectangle> &level) {
   if (IsKeyDown(KEY_D))
     acceleration.x = DIR::RIGHT * Config::ACCELERATION * accelMult;
 
-  // Jump only when grounded
-  if (IsKeyPressed(KEY_W) && grounded)
-    velocity.y = Config::JUMPIMPULSE;
-
   // Friction only on the ground — in air momentum carries freely
   if (grounded)
     acceleration.x += -Config::FRICTION * getDir(velocity.x);
 
-  acceleration.y += Config::GRAVITY;
+  // Coyote time: stay jumpable briefly after walking off a ledge
+  if (grounded)
+    coyoteTimer = Config::COYOTE_TIME;
+  else
+    coyoteTimer -= GetFrameTime();
+
+  // Jump buffer: remember a jump press for a short window before landing
+  if (IsKeyPressed(KEY_W))
+    jumpBufferTimer = Config::JUMP_BUFFER_TIME;
+  else
+    jumpBufferTimer -= GetFrameTime();
+
+  // Fire jump if buffer active and coyote window open
+  if (jumpBufferTimer > 0.0f && coyoteTimer > 0.0f) {
+    velocity.y = Config::JUMPIMPULSE;
+    jumpBufferTimer = 0.0f;
+    coyoteTimer = 0.0f;
+  }
+
+  // Variable jump height: cut upward velocity when jump is released early
+  if (IsKeyReleased(KEY_W) && velocity.y < 0.0f)
+    velocity.y *= Config::JUMP_RELEASE_MULT;
+
+  // Higher gravity when falling so the arc feels intentional, not floaty
+  float gravMult = (velocity.y > 0.0f) ? Config::FALL_GRAVITY_MULT : 1.0f;
+  acceleration.y += Config::GRAVITY * gravMult;
 
   // Integrate velocity
   velocity.x += acceleration.x * GetFrameTime();
