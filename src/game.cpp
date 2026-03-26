@@ -2,6 +2,7 @@
 #include "../include/json.hpp"
 #include "../include/raylib/raylib.h"
 #include "../include/settings.hpp"
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -182,46 +183,90 @@ void Game::levelSelect() {
 static void drawTile(const LevelTile &t) {
   const int TS = (int)Config::TILESIZE;
   const int x  = (int)t.rect.x, y = (int)t.rect.y;
+  const float cx = x + TS * 0.5f, cy = y + TS * 0.5f;
 
-  DrawRectangleRec(t.rect, tileColor(t.type));
+  // High contrast: swap tile color to high-luminance palette meeting 7:1 ratio
+  Color baseColor = tileColor(t.type);
+  if (Settings::highContrast) {
+    switch (t.type) {
+    case TileType::SOLID: baseColor = {80,  80,  80,  255}; break; // dark gray
+    case TileType::FIRE:  baseColor = {255, 200, 0,   255}; break; // bright yellow
+    case TileType::WATER: baseColor = {0,   220, 255, 255}; break; // bright cyan
+    case TileType::EXIT:  baseColor = {50,  255, 50,  255}; break; // bright lime
+    }
+  }
+  DrawRectangleRec(t.rect, baseColor);
 
   if (Settings::highContrast)
     DrawRectangleLinesEx(t.rect, 2, WHITE);
 
   if (Settings::patternTiles) {
+    // Alpha 220 so patterns survive the colorblind shader.
+    // Orientation is the distinguishing property (pre-attentive), not just color.
     switch (t.type) {
     case TileType::SOLID:
-      // diagonal cross-hatch
-      for (int i = 0; i < TS * 2; i += 6) {
-        DrawLine(x + i, y, x, y + i, {255, 255, 255, 90});
-        DrawLine(x + TS - i, y + TS, x + TS, y + TS - i, {255, 255, 255, 90});
+      // diagonal cross-hatch (45°)
+      for (int i = 0; i < TS * 2; i += 7) {
+        DrawLine(x + i, y, x, y + i, {255, 255, 255, 220});
+        DrawLine(x + TS - i, y + TS, x + TS, y + TS - i, {255, 255, 255, 220});
       }
       break;
     case TileType::FIRE:
-      // horizontal stripes
-      for (int i = 4; i < TS; i += 6)
-        DrawLine(x, y + i, x + TS, y + i, {255, 255, 255, 110});
+      // chevron / zigzag (ascending diagonal, distinct from vertical)
+      for (int row = 0; row < TS; row += 7) {
+        for (int col = 0; col < TS - 4; col += 8) {
+          DrawLine(x + col,     y + row + 4, x + col + 4, y + row,     {255, 255, 255, 220});
+          DrawLine(x + col + 4, y + row,     x + col + 8, y + row + 4, {255, 255, 255, 220});
+        }
+      }
       break;
     case TileType::WATER:
-      // vertical stripes
-      for (int i = 4; i < TS; i += 6)
-        DrawLine(x + i, y, x + i, y + TS, {255, 255, 255, 110});
+      // sine-wave approximation (horizontal undulation, distinct from fire chevrons)
+      for (int row = 4; row < TS; row += 7) {
+        for (int col = 0; col < TS - 1; col++) {
+          int y0 = (int)(std::sin((col)      * 0.4f) * 2.0f);
+          int y1 = (int)(std::sin((col + 1)  * 0.4f) * 2.0f);
+          DrawLine(x + col, y + row + y0, x + col + 1, y + row + y1, {255, 255, 255, 220});
+        }
+      }
       break;
     case TileType::EXIT:
-      // dot grid
+      // dot grid (distinct from all line patterns)
       for (int dx = 5; dx < TS; dx += 7)
         for (int dy = 5; dy < TS; dy += 7)
-          DrawRectangle(x + dx, y + dy, 3, 3, {255, 255, 255, 150});
+          DrawRectangle(x + dx, y + dy, 3, 3, {255, 255, 255, 220});
       break;
     }
   }
 
+  // Shape labels: geometric symbols (pre-attentive, no reading required)
   if (Settings::shapeLabels && t.type != TileType::SOLID) {
-    const char *lbl = (t.type == TileType::FIRE)  ? "F"
-                    : (t.type == TileType::WATER) ? "W" : "E";
-    int fs = 14;
-    DrawText(lbl, x + TS / 2 - MeasureText(lbl, fs) / 2,
-             y + TS / 2 - fs / 2, fs, WHITE);
+    const float sz = TS * 0.28f;
+    switch (t.type) {
+    case TileType::FIRE:
+      // upward-pointing triangle
+      DrawTriangle({cx,         cy - sz},
+                   {cx - sz,    cy + sz * 0.6f},
+                   {cx + sz,    cy + sz * 0.6f},
+                   {0, 0, 0, 200});
+      break;
+    case TileType::WATER:
+      // filled circle
+      DrawCircleV({cx, cy}, sz * 0.85f, {0, 0, 0, 200});
+      break;
+    case TileType::EXIT:
+      // diamond (two triangles, top and bottom)
+      DrawTriangle({cx,      cy - sz},
+                   {cx - sz, cy     },
+                   {cx + sz, cy     },
+                   {0, 0, 0, 200});
+      DrawTriangle({cx - sz, cy     },
+                   {cx,      cy + sz},
+                   {cx + sz, cy     },
+                   {0, 0, 0, 200});
+      break;
+    default: break;
+    }
   }
 }
 
@@ -282,8 +327,23 @@ void Game::runLevel() {
   p.draw();
   p2.draw();
   if (Settings::highContrast) {
-    DrawRectangleLinesEx(p.getBody(),  2, BLACK);
-    DrawRectangleLinesEx(p2.getBody(), 2, BLACK);
+    // Differentiated outlines: YELLOW for fire player, WHITE for water player
+    DrawRectangleLinesEx(p.getBody(),  3, YELLOW);
+    DrawRectangleLinesEx(p2.getBody(), 3, WHITE);
+  }
+  // Shape markers inside players so they're distinguishable without color
+  if (Settings::shapeLabels) {
+    Rectangle b1 = p.getBody(), b2 = p2.getBody();
+    float cx1 = b1.x + b1.width * 0.5f, cy1 = b1.y + b1.height * 0.5f;
+    float cx2 = b2.x + b2.width * 0.5f, cy2 = b2.y + b2.height * 0.5f;
+    float sz  = b1.width * 0.22f;
+    // fire player: small upward triangle
+    DrawTriangle({cx1,      cy1 - sz},
+                 {cx1 - sz, cy1 + sz * 0.6f},
+                 {cx1 + sz, cy1 + sz * 0.6f},
+                 {0, 0, 0, 220});
+    // water player: small circle
+    DrawCircleV({cx2, cy2}, sz * 0.85f, {0, 0, 0, 220});
   }
   EndTextureMode();
 
