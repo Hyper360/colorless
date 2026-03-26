@@ -110,19 +110,73 @@ void Game::setCbUniforms() {
 
 void Game::loadLevel(const std::string &path) {
   tiles.clear();
+  objects.clear();
   currentLevelPath = path;
   std::ifstream f(path);
   if (!f.is_open() || f.peek() == std::ifstream::traits_type::eof())
     return;
   try {
     json j = json::parse(f);
+    const float ts = Config::TILESIZE;
+
     for (auto &t : j["tiles"]) {
       TileType type = TileType::SOLID;
       if (t.contains("type"))
         type = static_cast<TileType>(t["type"].get<int>());
-      float x = (float)t["x"].get<int>() * Config::TILESIZE;
-      float y = (float)t["y"].get<int>() * Config::TILESIZE;
-      tiles.push_back({type, {x, y, Config::TILESIZE, Config::TILESIZE}});
+      float x = (float)t["x"].get<int>() * ts;
+      float y = (float)t["y"].get<int>() * ts;
+      tiles.push_back({type, {x, y, ts, ts}});
+    }
+
+    // Reset spawns to defaults; level JSON overrides them via SPAWN_P1/P2 objects
+    p1Spawn = {200, 200};
+    p2Spawn = {240, 200};
+
+    if (j.contains("objects")) {
+      for (auto &o : j["objects"]) {
+        LevelObject lo{};
+        lo.type   = static_cast<ObjType>(o["type"].get<int>());
+        lo.linkId = o.contains("link") ? o["link"].get<int>() : 0;
+        float tx = (float)o["x"].get<int>() * ts;
+        float ty = (float)o["y"].get<int>() * ts;
+
+        // Spawn markers set positions and are not added to the object list
+        if (lo.type == ObjType::SPAWN_P1) { p1Spawn = {tx, ty}; continue; }
+        if (lo.type == ObjType::SPAWN_P2) { p2Spawn = {tx, ty}; continue; }
+
+        switch (lo.type) {
+        case ObjType::PRESSURE_PLATE:
+          lo.rect = {tx, ty, ts, ts};
+          break;
+        case ObjType::LEVER:
+          lo.rect = {tx + ts*0.35f, ty + ts*0.1f, ts*0.3f, ts*0.7f};
+          break;
+        case ObjType::GATE:
+          lo.rect = {tx, ty, ts, ts*2.0f};
+          break;
+        case ObjType::MOVING_PLATFORM: {
+          float etx = o.contains("ex") ? (float)o["ex"].get<int>()*ts : tx + ts*4;
+          float ety = o.contains("ey") ? (float)o["ey"].get<int>()*ts : ty;
+          lo.origin   = {tx,  ty};
+          lo.endpoint = {etx, ety};
+          lo.rect     = {tx,  ty, ts, ts*0.4f};
+          lo.speed    = o.contains("speed") ? o["speed"].get<float>() : 80.0f;
+          break;
+        }
+        case ObjType::CONVEYOR_LEFT:
+        case ObjType::CONVEYOR_RIGHT:
+          lo.rect = {tx, ty, ts, ts*0.4f};
+          break;
+        case ObjType::FALLING_PLATFORM:
+          lo.rect = {tx, ty, ts, ts*0.4f};
+          break;
+        case ObjType::PUSHABLE_BLOCK:
+          lo.rect = {tx, ty, ts, ts};
+          break;
+        default: break;
+        }
+        objects.push_back(lo);
+      }
     }
   } catch (...) {}
 }
@@ -157,8 +211,8 @@ void Game::levelSelect() {
 
   if (selector->wantsPlay()) {
     loadLevel(selector->getSelected());
-    p  = Entity({200, 200}, {KEY_A, KEY_D, KEY_W},         RED,  ElementType::FIRE);
-    p2 = Entity({240, 200}, {KEY_LEFT, KEY_RIGHT, KEY_UP}, BLUE, ElementType::WATER);
+    p  = Entity(p1Spawn, {KEY_A, KEY_D, KEY_W, KEY_S},           RED,  ElementType::FIRE);
+    p2 = Entity(p2Spawn, {KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN}, BLUE, ElementType::WATER);
     winTimer = 0.0f;
     state = GameState::LEVEL;
   } else if (selector->wantsEdit()) {
@@ -189,10 +243,11 @@ static void drawTile(const LevelTile &t) {
   Color baseColor = tileColor(t.type);
   if (Settings::highContrast) {
     switch (t.type) {
-    case TileType::SOLID: baseColor = {80,  80,  80,  255}; break; // dark gray
-    case TileType::FIRE:  baseColor = {255, 200, 0,   255}; break; // bright yellow
-    case TileType::WATER: baseColor = {0,   220, 255, 255}; break; // bright cyan
-    case TileType::EXIT:  baseColor = {50,  255, 50,  255}; break; // bright lime
+    case TileType::SOLID:   baseColor = {80,  80,  80,  255}; break;
+    case TileType::FIRE:    baseColor = {255, 200, 0,   255}; break;
+    case TileType::WATER:   baseColor = {0,   220, 255, 255}; break;
+    case TileType::EXIT_P1: baseColor = {255, 80,  80,  255}; break;
+    case TileType::EXIT_P2: baseColor = {80,  160, 255, 255}; break;
     }
   }
   DrawRectangleRec(t.rect, baseColor);
@@ -230,7 +285,8 @@ static void drawTile(const LevelTile &t) {
         }
       }
       break;
-    case TileType::EXIT:
+    case TileType::EXIT_P1:
+    case TileType::EXIT_P2:
       // dot grid (distinct from all line patterns)
       for (int dx = 5; dx < TS; dx += 7)
         for (int dy = 5; dy < TS; dy += 7)
@@ -244,26 +300,19 @@ static void drawTile(const LevelTile &t) {
     const float sz = TS * 0.28f;
     switch (t.type) {
     case TileType::FIRE:
-      // upward-pointing triangle
-      DrawTriangle({cx,         cy - sz},
-                   {cx - sz,    cy + sz * 0.6f},
-                   {cx + sz,    cy + sz * 0.6f},
-                   {0, 0, 0, 200});
+      DrawTriangle({cx,      cy - sz}, {cx - sz, cy + sz*0.6f}, {cx + sz, cy + sz*0.6f}, {0,0,0,200});
       break;
     case TileType::WATER:
-      // filled circle
       DrawCircleV({cx, cy}, sz * 0.85f, {0, 0, 0, 200});
       break;
-    case TileType::EXIT:
-      // diamond (two triangles, top and bottom)
-      DrawTriangle({cx,      cy - sz},
-                   {cx - sz, cy     },
-                   {cx + sz, cy     },
-                   {0, 0, 0, 200});
-      DrawTriangle({cx - sz, cy     },
-                   {cx,      cy + sz},
-                   {cx + sz, cy     },
-                   {0, 0, 0, 200});
+    case TileType::EXIT_P1:
+      // downward triangle (door shape) + "1"
+      DrawTriangle({cx - sz, cy - sz*0.3f}, {cx + sz, cy - sz*0.3f}, {cx, cy + sz}, {0,0,0,200});
+      DrawText("1", (int)cx - 3, (int)(cy - sz*0.25f), 10, WHITE);
+      break;
+    case TileType::EXIT_P2:
+      DrawTriangle({cx - sz, cy - sz*0.3f}, {cx + sz, cy - sz*0.3f}, {cx, cy + sz}, {0,0,0,200});
+      DrawText("2", (int)cx - 3, (int)(cy - sz*0.25f), 10, WHITE);
       break;
     default: break;
     }
@@ -279,35 +328,30 @@ void Game::runLevel() {
     if (pauseMenu.wantsQuit())   { paused = false; state = GameState::LEVEL_SELECT; }
   }
 
-  // Build solid list for physics
-  std::vector<Rectangle> solids;
-  for (auto &t : tiles)
-    if (t.type == TileType::SOLID)
-      solids.push_back(t.rect);
+  // Build dynamic solid list (tiles + closed gates + platforms; no pushable blocks)
+  std::vector<Rectangle> solids = buildSolids();
 
   if (!paused && winTimer <= 0.0f) {
+    preUpdateObjects();      // conveyor forces applied to entity velocity
     p.update(solids);
     p2.update(solids);
+    postUpdateObjects(solids); // carry, push, gates, falling, etc.
 
-    // Hazard check: fire kills water player, water kills fire player
+    // Death: hazard tiles or falling off the bottom — always respawn both
+    bool death = false;
     for (auto &t : tiles) {
-      if (t.type == TileType::FIRE &&
-          p2.getElement() == ElementType::WATER &&
-          CheckCollisionRecs(p2.getBody(), t.rect))
-        p2.respawn();
-      if (t.type == TileType::WATER &&
-          p.getElement() == ElementType::FIRE &&
-          CheckCollisionRecs(p.getBody(), t.rect))
-        p.respawn();
+      if (t.type == TileType::FIRE  && CheckCollisionRecs(p2.getBody(), t.rect)) death = true;
+      if (t.type == TileType::WATER && CheckCollisionRecs(p.getBody(),  t.rect)) death = true;
     }
+    if (p.getBody().y  > GetScreenHeight()) death = true;
+    if (p2.getBody().y > GetScreenHeight()) death = true;
+    if (death) { p.respawn(); p2.respawn(); }
 
-    // Win: both players overlap an exit tile simultaneously
+    // Win: p1 on EXIT_P1 and p2 on EXIT_P2 simultaneously
     bool p1Exit = false, p2Exit = false;
     for (auto &t : tiles) {
-      if (t.type == TileType::EXIT) {
-        if (CheckCollisionRecs(p.getBody(), t.rect))  p1Exit = true;
-        if (CheckCollisionRecs(p2.getBody(), t.rect)) p2Exit = true;
-      }
+      if (t.type == TileType::EXIT_P1 && CheckCollisionRecs(p.getBody(),  t.rect)) p1Exit = true;
+      if (t.type == TileType::EXIT_P2 && CheckCollisionRecs(p2.getBody(), t.rect)) p2Exit = true;
     }
     if (p1Exit && p2Exit)
       winTimer = 2.0f;
@@ -324,6 +368,7 @@ void Game::runLevel() {
   ClearBackground(Settings::highContrast ? DARKGRAY : WHITE);
   for (auto &t : tiles)
     drawTile(t);
+  drawObjects();
   p.draw();
   p2.draw();
   if (Settings::highContrast) {
@@ -383,6 +428,266 @@ void Game::runLevelEditor() {
   BeginDrawing();
   editor->draw();
   EndDrawing();
+}
+
+// ---- Object system -------------------------------------------------------
+
+std::vector<Rectangle> Game::buildSolids() const {
+  std::vector<Rectangle> s;
+  for (auto &t : tiles)
+    if (t.type == TileType::SOLID) s.push_back(t.rect);
+  for (auto &o : objects) {
+    switch (o.type) {
+    case ObjType::PRESSURE_PLATE:
+    case ObjType::MOVING_PLATFORM:
+    case ObjType::CONVEYOR_LEFT:
+    case ObjType::CONVEYOR_RIGHT:
+      s.push_back(o.rect); break;
+    case ObjType::GATE:
+      if (!o.active) s.push_back(o.rect); break;
+    case ObjType::FALLING_PLATFORM:
+      if (!o.falling) s.push_back(o.rect); break;
+    default: break;
+    }
+    // Pushable blocks intentionally excluded — push resolution handles them separately
+  }
+  return s;
+}
+
+// Must be called BEFORE entity physics so conveyor velocity is included in this frame's update.
+void Game::preUpdateObjects() {
+  const float dt  = GetFrameTime();
+  const float spd = 100.0f; // conveyor belt speed px/s
+  for (auto &o : objects) {
+    if (o.type != ObjType::CONVEYOR_LEFT && o.type != ObjType::CONVEYOR_RIGHT) continue;
+    float vx = (o.type == ObjType::CONVEYOR_RIGHT ? 1.0f : -1.0f) * spd;
+    for (Entity *e : {&p, &p2}) {
+      Rectangle pb = e->getBody();
+      if (std::abs((pb.y + pb.height) - o.rect.y) <= 3.0f &&
+          pb.x + pb.width > o.rect.x && pb.x < o.rect.x + o.rect.width)
+        e->applyConveyorX(vx);
+    }
+  }
+}
+
+// Called AFTER entity physics.
+void Game::postUpdateObjects(const std::vector<Rectangle> &solids) {
+  const float dt = GetFrameTime();
+
+  // 1. Moving platforms: advance patrol, carry players
+  for (auto &o : objects) {
+    if (o.type != ObjType::MOVING_PLATFORM) continue;
+    float dist = Vector2Distance(o.origin, o.endpoint);
+    if (dist < 1.0f) continue;
+    Vector2 prev = {o.rect.x, o.rect.y};
+    o.tParam += o.patDir * o.speed * dt / dist;
+    if (o.tParam >= 1.0f) { o.tParam = 1.0f; o.patDir = -1; }
+    if (o.tParam <= 0.0f) { o.tParam = 0.0f; o.patDir =  1; }
+    o.rect.x = o.origin.x + (o.endpoint.x - o.origin.x) * o.tParam;
+    o.rect.y = o.origin.y + (o.endpoint.y - o.origin.y) * o.tParam;
+    Vector2 delta = {o.rect.x - prev.x, o.rect.y - prev.y};
+
+    for (Entity *e : {&p, &p2}) {
+      Rectangle pb = e->getBody();
+      if (std::abs((pb.y + pb.height) - prev.y) <= 4.0f &&
+          pb.x + pb.width > prev.x && pb.x < prev.x + o.rect.width)
+        e->nudge(delta);
+    }
+  }
+
+  // 2. Pressure plate activation (player bottom resting on plate top)
+  for (auto &o : objects) {
+    if (o.type != ObjType::PRESSURE_PLATE) continue;
+    bool pressed = false;
+    for (Entity *e : {&p, &p2}) {
+      Rectangle pb = e->getBody();
+      if (std::abs((pb.y + pb.height) - o.rect.y) <= 3.0f &&
+          pb.x + pb.width > o.rect.x && pb.x < o.rect.x + o.rect.width)
+        pressed = true;
+    }
+    // Pushable blocks can also hold plates
+    for (auto &b : objects) {
+      if (b.type != ObjType::PUSHABLE_BLOCK) continue;
+      if (std::abs((b.rect.y + b.rect.height) - o.rect.y) <= 3.0f &&
+          b.rect.x + b.rect.width > o.rect.x && b.rect.x < o.rect.x + o.rect.width)
+        pressed = true;
+    }
+    o.active = pressed;
+  }
+
+  // 3. Lever: proximity interact
+  for (auto &o : objects) {
+    if (o.type != ObjType::LEVER) continue;
+    Rectangle zone = {o.rect.x - 12, o.rect.y - 12,
+                      o.rect.width + 24, o.rect.height + 24};
+    if (CheckCollisionRecs(p.getBody(),  zone) && p.isInteracting())  o.active = !o.active;
+    if (CheckCollisionRecs(p2.getBody(), zone) && p2.isInteracting()) o.active = !o.active;
+  }
+
+  // 4. Gate: open when any linked plate/lever is active
+  for (auto &gate : objects) {
+    if (gate.type != ObjType::GATE) continue;
+    bool open = false;
+    for (auto &src : objects) {
+      if (src.linkId != gate.linkId) continue;
+      if ((src.type == ObjType::PRESSURE_PLATE || src.type == ObjType::LEVER) && src.active)
+        { open = true; break; }
+    }
+    gate.active = open;
+  }
+
+  // 5. Falling platforms: trigger countdown when player stands on them
+  for (auto &o : objects) {
+    if (o.type != ObjType::FALLING_PLATFORM || o.falling) continue;
+    if (o.fallTimer < 0.0f) {
+      for (Entity *e : {&p, &p2}) {
+        Rectangle pb = e->getBody();
+        if (std::abs((pb.y + pb.height) - o.rect.y) <= 3.0f &&
+            pb.x + pb.width > o.rect.x && pb.x < o.rect.x + o.rect.width)
+          o.fallTimer = 0.5f;
+      }
+    } else {
+      o.fallTimer -= dt;
+      if (o.fallTimer <= 0.0f) o.falling = true;
+    }
+  }
+  // Advance falling
+  for (auto &o : objects) {
+    if (o.type == ObjType::FALLING_PLATFORM && o.falling) {
+      o.velY += 500.0f * dt;
+      o.rect.y += o.velY * dt;
+    }
+  }
+
+  // 6. Pushable blocks: gravity + solid resolution
+  for (auto &o : objects) {
+    if (o.type != ObjType::PUSHABLE_BLOCK) continue;
+    o.velY += 500.0f * dt;
+    o.rect.y += o.velY * dt;
+    o.grounded = false;
+    for (auto &s : solids) {
+      if (!CheckCollisionRecs(o.rect, s)) continue;
+      Rectangle ov = GetCollisionRec(o.rect, s);
+      if (o.velY >= 0) { o.rect.y -= ov.height; o.velY = 0; o.grounded = true; }
+      else             { o.rect.y += ov.height; o.velY = 0; }
+    }
+  }
+
+  // 7. Pushable block <-> player push resolution
+  for (auto &o : objects) {
+    if (o.type != ObjType::PUSHABLE_BLOCK) continue;
+    for (Entity *e : {&p, &p2}) {
+      Rectangle pb = e->getBody();
+      if (!CheckCollisionRecs(pb, o.rect)) continue;
+      Rectangle ov = GetCollisionRec(pb, o.rect);
+
+      if (ov.height <= ov.width) {
+        // Vertical: player landed on top of block (or block rose into player)
+        float eCy = pb.y + pb.height * 0.5f;
+        float oCy = o.rect.y + o.rect.height * 0.5f;
+        if (eCy < oCy) { // player above block
+          e->nudge({0, -ov.height});
+          e->stopY();
+        }
+        continue;
+      }
+
+      // Horizontal push
+      float eCx = pb.x + pb.width * 0.5f;
+      float oCx = o.rect.x + o.rect.width * 0.5f;
+      float dx  = (eCx < oCx) ? ov.width : -ov.width;
+      bool pushingThisWay = (dx > 0) ? e->isPushingRight() : e->isPushingLeft();
+      if (!pushingThisWay) { e->nudge({-dx, 0}); e->stopX(); continue; }
+
+      // Try to move block
+      Rectangle test = {o.rect.x + dx, o.rect.y, o.rect.width, o.rect.height};
+      bool blocked = false;
+      for (auto &s : solids)
+        if (CheckCollisionRecs(test, s)) { blocked = true; break; }
+      for (auto &b : objects) // block vs block
+        if (&b != &o && b.type == ObjType::PUSHABLE_BLOCK && CheckCollisionRecs(test, b.rect))
+          { blocked = true; break; }
+
+      if (!blocked) o.rect.x += dx;
+      else { e->nudge({-dx, 0}); e->stopX(); }
+    }
+  }
+}
+
+static void drawObjArrows(Rectangle rect, float dirX, Color col) {
+  int n = std::max(1, (int)(rect.width / 12));
+  for (int i = 0; i < n; i++) {
+    float ax = rect.x + (i + 0.5f) * rect.width / n;
+    float ay = rect.y + rect.height * 0.5f;
+    DrawTriangle({ax + dirX*5, ay},
+                 {ax - dirX*3, ay - 4},
+                 {ax - dirX*3, ay + 4}, col);
+  }
+}
+
+void Game::drawObjects() {
+  char buf[4];
+  for (auto &o : objects) {
+    if (o.type == ObjType::FALLING_PLATFORM && o.rect.y > GetScreenHeight() + 64) continue;
+
+    Color col = objColor(o.type, o.active);
+    DrawRectangleRec(o.rect, col);
+
+    switch (o.type) {
+    case ObjType::PRESSURE_PLATE:
+      DrawRectangleLinesEx(o.rect, 2, o.active ? YELLOW : DARKGRAY);
+      snprintf(buf, sizeof(buf), "%d", o.linkId);
+      DrawText(buf, (int)o.rect.x + 3, (int)o.rect.y + 3, 11, BLACK);
+      break;
+    case ObjType::LEVER: {
+      float cx = o.rect.x + o.rect.width*0.5f, cy = o.rect.y + o.rect.height*0.5f;
+      float ang = (o.active ? -0.5f : 0.5f);
+      DrawLineEx({cx, cy}, {cx + sinf(ang)*o.rect.height*0.5f,
+                             cy - cosf(ang)*o.rect.height*0.5f}, 4, o.active ? YELLOW : LIGHTGRAY);
+      snprintf(buf, sizeof(buf), "%d", o.linkId);
+      DrawText(buf, (int)o.rect.x, (int)o.rect.y - 13, 11, WHITE);
+      break;
+    }
+    case ObjType::GATE:
+      if (!o.active) {
+        DrawRectangleLinesEx(o.rect, 2, WHITE);
+        for (int i = 1; i <= 3; i++) {
+          float bx = o.rect.x + o.rect.width * i / 4.0f;
+          DrawRectangle((int)bx - 2, (int)o.rect.y, 4, (int)o.rect.height, {50,90,200,255});
+        }
+      }
+      snprintf(buf, sizeof(buf), "%d", o.linkId);
+      DrawText(buf, (int)o.rect.x + 3, (int)o.rect.y + 3, 11, WHITE);
+      break;
+    case ObjType::MOVING_PLATFORM: {
+      float dx = o.endpoint.x - o.origin.x;
+      float dy = o.endpoint.y - o.origin.y;
+      float len = sqrtf(dx*dx + dy*dy);
+      if (len > 0) {
+        DrawTriangle({o.rect.x + o.rect.width*0.5f + dx/len*8, o.rect.y + o.rect.height*0.5f},
+                     {o.rect.x + o.rect.width*0.5f - dx/len*5, o.rect.y + o.rect.height*0.5f - 5},
+                     {o.rect.x + o.rect.width*0.5f - dx/len*5, o.rect.y + o.rect.height*0.5f + 5},
+                     {40,160,40,200});
+      }
+      break;
+    }
+    case ObjType::CONVEYOR_LEFT:
+      drawObjArrows(o.rect, -1.0f, {200,100,220,200}); break;
+    case ObjType::CONVEYOR_RIGHT:
+      drawObjArrows(o.rect,  1.0f, {200,100,220,200}); break;
+    case ObjType::FALLING_PLATFORM:
+      if (o.fallTimer >= 0.0f && !o.falling) {
+        int alpha = (int)(o.fallTimer / 0.5f * 180);
+        DrawRectangleRec(o.rect, {255, 80, 40, (unsigned char)alpha});
+      }
+      break;
+    case ObjType::PUSHABLE_BLOCK:
+      DrawLine((int)o.rect.x, (int)o.rect.y, (int)(o.rect.x+o.rect.width), (int)(o.rect.y+o.rect.height), {90,90,100,180});
+      DrawLine((int)(o.rect.x+o.rect.width), (int)o.rect.y, (int)o.rect.x, (int)(o.rect.y+o.rect.height), {90,90,100,180});
+      break;
+    default: break;
+    }
+  }
 }
 
 void Game::exit() {
