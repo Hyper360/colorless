@@ -10,6 +10,14 @@ Entity::Entity(Vector2 pos, Controls ctrl, Color col, ElementType elem)
   body.height = Config::TILESIZE;
 }
 
+void Entity::nudge(Vector2 d)       { body.x += d.x; body.y += d.y; }
+void Entity::applyConveyorX(float v) { conveyorVX = v; }
+void Entity::stopX()                 { velocity.x = 0; }
+void Entity::stopY()                 { velocity.y = 0; grounded = true; }
+bool Entity::isInteracting()  const  { return IsKeyPressed(controls.interact); }
+bool Entity::isPushingRight() const  { return IsKeyDown(controls.right); }
+bool Entity::isPushingLeft()  const  { return IsKeyDown(controls.left); }
+
 void Entity::respawn() {
   body.x = spawnPos.x;
   body.y = spawnPos.y;
@@ -64,6 +72,9 @@ void Entity::update(const std::vector<Rectangle> &level) {
 
   // Integrate velocity
   velocity.x += acceleration.x * GetFrameTime();
+  // Conveyor belt override: applied after friction so it isn't cancelled
+  velocity.x += conveyorVX;
+  conveyorVX = 0.0f;
   velocity.x = Clamp(velocity.x, -Config::MAXSPEED, Config::MAXSPEED);
 
   // Friction: directly move velocity toward zero (moveToward style).
@@ -104,10 +115,4 @@ void Entity::update(const std::vector<Rectangle> &level) {
     }
   }
 
-  // Screen floor fallback
-  if (body.y >= GetScreenHeight() - body.height) {
-    body.y = GetScreenHeight() - body.height;
-    velocity.y = 0;
-    grounded = true;
-  }
 };

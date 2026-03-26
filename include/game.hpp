@@ -2,6 +2,7 @@
 #include "entity.hpp"
 #include "leveleditor.hpp"
 #include "levelselector.hpp"
+#include "levelobject.hpp"
 #include "pausemenu.hpp"
 #include "tile.hpp"
 #include <cstdint>
@@ -33,9 +34,12 @@ private:
   void runLevelEditor();
 
   // Level gameplay
-  Entity p{{200, 200},  {KEY_A, KEY_D, KEY_W},          RED,  ElementType::FIRE};
-  Entity p2{{240, 200}, {KEY_LEFT, KEY_RIGHT, KEY_UP},   BLUE, ElementType::WATER};
-  std::vector<LevelTile> tiles;
+  Vector2 p1Spawn{200, 200};
+  Vector2 p2Spawn{240, 200};
+  Entity p{{200, 200},  {KEY_A, KEY_D, KEY_W, KEY_S},             RED,  ElementType::FIRE};
+  Entity p2{{240, 200}, {KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN},   BLUE, ElementType::WATER};
+  std::vector<LevelTile>   tiles;
+  std::vector<LevelObject> objects;
   std::string currentLevelPath;
   float winTimer = 0.0f;
   bool paused = false;
@@ -54,4 +58,10 @@ private:
 
   void loadLevel(const std::string &path);
   static std::string newLevelPath();
+
+  // Object system
+  std::vector<Rectangle> buildSolids() const; // tiles + closed gates + platforms
+  void preUpdateObjects();                     // conveyor forces (before entity physics)
+  void postUpdateObjects(const std::vector<Rectangle> &solids); // carry, push, gates, etc.
+  void drawObjects();
 };
