@@ -1,11 +1,33 @@
 #include "../include/game.hpp"
 #include "../include/json.hpp"
 #include "../include/raylib/raylib.h"
+#include "../include/settings.hpp"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 using json = nlohmann::json;
 namespace fs = std::filesystem;
+
+// Fragment shader: applies a 3x3 color matrix via three row vec3 uniforms.
+// Identity rows (default) produce no change.
+static const char *CB_FRAG = R"(
+#version 330
+in vec2 fragTexCoord;
+in vec4 fragColor;
+uniform sampler2D texture0;
+uniform vec4 colDiffuse;
+uniform vec3 rRow;
+uniform vec3 gRow;
+uniform vec3 bRow;
+out vec4 finalColor;
+void main() {
+    vec4 c = texture(texture0, fragTexCoord);
+    finalColor = vec4(dot(rRow, c.rgb),
+                      dot(gRow, c.rgb),
+                      dot(bRow, c.rgb),
+                      c.a) * fragColor * colDiffuse;
+}
+)";
 
 // ---- Setup ---------------------------------------------------------------
 
@@ -13,6 +35,46 @@ Game::Game() {
   if (!fs::exists("levels/"))
     fs::create_directory("levels/");
   selector = std::make_unique<LevelSelector>();
+
+  renderTarget = LoadRenderTexture(Config::WIDTH, Config::HEIGHT);
+  cbShader     = LoadShaderFromMemory(nullptr, CB_FRAG);
+  rRowLoc      = GetShaderLocation(cbShader, "rRow");
+  gRowLoc      = GetShaderLocation(cbShader, "gRow");
+  bRowLoc      = GetShaderLocation(cbShader, "bRow");
+}
+
+// Sets rRow/gRow/bRow uniforms from current Settings flags.
+// Colorblind matrices: Brettel/Viénot LMS simulation.
+void Game::setCbUniforms() {
+  float r[3] = {1, 0, 0};
+  float g[3] = {0, 1, 0};
+  float b[3] = {0, 0, 1};
+
+  if (Settings::deuteranopia) {
+    float nr[] = {0.625f, 0.375f, 0.0f};
+    float ng[] = {0.700f, 0.300f, 0.0f};
+    float nb[] = {0.0f,   0.300f, 0.700f};
+    memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
+  } else if (Settings::protanopia) {
+    float nr[] = {0.567f, 0.433f, 0.0f};
+    float ng[] = {0.558f, 0.442f, 0.0f};
+    float nb[] = {0.0f,   0.242f, 0.758f};
+    memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
+  } else if (Settings::tritanopia) {
+    float nr[] = {0.950f, 0.050f, 0.0f};
+    float ng[] = {0.0f,   0.433f, 0.567f};
+    float nb[] = {0.0f,   0.475f, 0.525f};
+    memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
+  } else if (Settings::achromatopsia) {
+    float nr[] = {0.299f, 0.587f, 0.114f};
+    float ng[] = {0.299f, 0.587f, 0.114f};
+    float nb[] = {0.299f, 0.587f, 0.114f};
+    memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
+  }
+
+  SetShaderValue(cbShader, rRowLoc, r, SHADER_UNIFORM_VEC3);
+  SetShaderValue(cbShader, gRowLoc, g, SHADER_UNIFORM_VEC3);
+  SetShaderValue(cbShader, bRowLoc, b, SHADER_UNIFORM_VEC3);
 }
 
 void Game::loadLevel(const std::string &path) {
@@ -135,15 +197,31 @@ void Game::runLevel() {
       state = GameState::LEVEL_SELECT;
   }
 
-  BeginDrawing();
+  // --- Render game world to offscreen texture ---
+  BeginTextureMode(renderTarget);
   ClearBackground(WHITE);
   for (auto &t : tiles)
     DrawRectangleRec(t.rect, tileColor(t.type));
   p.draw();
   p2.draw();
+  EndTextureMode();
+
+  // --- Draw texture to screen through colorblind shader ---
+  setCbUniforms();
+  const int W = GetScreenWidth(), H = GetScreenHeight();
+  Rectangle src = {0, 0, (float)renderTarget.texture.width,
+                         -(float)renderTarget.texture.height}; // flip Y
+  Rectangle dst = {0, 0, (float)W, (float)H};
+
+  BeginDrawing();
+  ClearBackground(BLACK);
+  BeginShaderMode(cbShader);
+  DrawTexturePro(renderTarget.texture, src, dst, {0, 0}, 0.0f, WHITE);
+  EndShaderMode();
+
+  // HUD and overlays drawn after shader — unfiltered so they stay readable
   DrawText("ESC: Pause", 4, 4, 14, DARKGRAY);
   if (winTimer > 0.0f) {
-    const int W = GetScreenWidth(), H = GetScreenHeight();
     DrawRectangle(0, 0, W, H, {0, 0, 0, 160});
     const char *msg = "YOU WIN!";
     DrawText(msg, W / 2 - MeasureText(msg, 60) / 2, H / 2 - 30, 60, YELLOW);
@@ -166,7 +244,11 @@ void Game::runLevelEditor() {
   EndDrawing();
 }
 
-void Game::exit() { printf("Exiting!\n"); }
+void Game::exit() {
+  UnloadShader(cbShader);
+  UnloadRenderTexture(renderTarget);
+  printf("Exiting!\n");
+}
 
 void Game::stateManager() {
   switch (state) {

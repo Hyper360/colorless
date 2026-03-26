@@ -41,6 +41,12 @@ private:
   bool paused = false;
   PauseMenu pauseMenu;
 
+  // Post-process colorblind shader
+  RenderTexture2D renderTarget;
+  Shader          cbShader;
+  int             rRowLoc = 0, gRowLoc = 0, bRowLoc = 0;
+  void setCbUniforms();
+
   // Screen objects (created on demand)
   std::unique_ptr<LevelSelector> selector;
   std::unique_ptr<LevelEditor> editor;
