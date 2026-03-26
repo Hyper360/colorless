@@ -15,6 +15,7 @@ void webWrapper(void *game_p) {
 
 int main() {
   InitWindow(Config::WIDTH, Config::HEIGHT, Config::TITLE);
+  SetExitKey(KEY_NULL); // disable raylib's default ESC-closes-window behaviour
 
   Game game = Game();
 
