@@ -16,17 +16,21 @@ Game::Game() {
 }
 
 void Game::loadLevel(const std::string &path) {
-  levelTiles.clear();
+  tiles.clear();
   currentLevelPath = path;
   std::ifstream f(path);
   if (!f.is_open() || f.peek() == std::ifstream::traits_type::eof())
     return;
   try {
     json j = json::parse(f);
-    for (auto &t : j["tiles"])
-      levelTiles.push_back({(float)t["x"].get<int>() * Config::TILESIZE,
-                            (float)t["y"].get<int>() * Config::TILESIZE,
-                            Config::TILESIZE, Config::TILESIZE});
+    for (auto &t : j["tiles"]) {
+      TileType type = TileType::SOLID;
+      if (t.contains("type"))
+        type = static_cast<TileType>(t["type"].get<int>());
+      float x = (float)t["x"].get<int>() * Config::TILESIZE;
+      float y = (float)t["y"].get<int>() * Config::TILESIZE;
+      tiles.push_back({type, {x, y, Config::TILESIZE, Config::TILESIZE}});
+    }
   } catch (...) {}
 }
 
@@ -60,8 +64,9 @@ void Game::levelSelect() {
 
   if (selector->wantsPlay()) {
     loadLevel(selector->getSelected());
-    p  = Entity({200, 200}, {KEY_A, KEY_D, KEY_W},          RED);
-    p2 = Entity({240, 200}, {KEY_LEFT, KEY_RIGHT, KEY_UP},  BLUE);
+    p  = Entity({200, 200}, {KEY_A, KEY_D, KEY_W},         RED,  ElementType::FIRE);
+    p2 = Entity({240, 200}, {KEY_LEFT, KEY_RIGHT, KEY_UP}, BLUE, ElementType::WATER);
+    winTimer = 0.0f;
     state = GameState::LEVEL;
   } else if (selector->wantsEdit()) {
     editor = std::make_unique<LevelEditor>(selector->getSelected());
@@ -85,16 +90,57 @@ void Game::runLevel() {
   if (IsKeyPressed(KEY_ESCAPE))
     state = GameState::LEVEL_SELECT;
 
-  p.update(levelTiles);
-  p2.update(levelTiles);
+  // Build solid list for physics
+  std::vector<Rectangle> solids;
+  for (auto &t : tiles)
+    if (t.type == TileType::SOLID)
+      solids.push_back(t.rect);
+
+  if (winTimer <= 0.0f) {
+    p.update(solids);
+    p2.update(solids);
+
+    // Hazard check: fire kills water player, water kills fire player
+    for (auto &t : tiles) {
+      if (t.type == TileType::FIRE &&
+          p2.getElement() == ElementType::WATER &&
+          CheckCollisionRecs(p2.getBody(), t.rect))
+        p2.respawn();
+      if (t.type == TileType::WATER &&
+          p.getElement() == ElementType::FIRE &&
+          CheckCollisionRecs(p.getBody(), t.rect))
+        p.respawn();
+    }
+
+    // Win: both players overlap an exit tile simultaneously
+    bool p1Exit = false, p2Exit = false;
+    for (auto &t : tiles) {
+      if (t.type == TileType::EXIT) {
+        if (CheckCollisionRecs(p.getBody(), t.rect))  p1Exit = true;
+        if (CheckCollisionRecs(p2.getBody(), t.rect)) p2Exit = true;
+      }
+    }
+    if (p1Exit && p2Exit)
+      winTimer = 2.0f;
+  } else {
+    winTimer -= GetFrameTime();
+    if (winTimer <= 0.0f)
+      state = GameState::LEVEL_SELECT;
+  }
 
   BeginDrawing();
   ClearBackground(WHITE);
-  for (auto &r : levelTiles)
-    DrawRectangleRec(r, BLACK);
+  for (auto &t : tiles)
+    DrawRectangleRec(t.rect, tileColor(t.type));
   p.draw();
   p2.draw();
   DrawText("ESC: Back", 4, 4, 14, DARKGRAY);
+  if (winTimer > 0.0f) {
+    const int W = GetScreenWidth(), H = GetScreenHeight();
+    DrawRectangle(0, 0, W, H, {0, 0, 0, 160});
+    const char *msg = "YOU WIN!";
+    DrawText(msg, W / 2 - MeasureText(msg, 60) / 2, H / 2 - 30, 60, YELLOW);
+  }
   EndDrawing();
 }
 

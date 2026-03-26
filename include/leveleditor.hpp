@@ -1,11 +1,13 @@
 #pragma once
 #include "config.hpp"
 #include "raylib/raylib.h"
+#include "tile.hpp"
 #include <string>
 #include <vector>
 
 struct EditorTile {
   int x, y;
+  TileType type = TileType::SOLID;
 };
 
 class LevelEditor {
@@ -18,6 +20,7 @@ public:
 private:
   std::string levelPath;
   std::vector<EditorTile> tiles;
+  TileType selectedType = TileType::SOLID;
   float savedTimer = 0.0f;
   bool exitRequested = false;
 

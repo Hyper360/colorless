@@ -17,20 +17,25 @@ struct Controls {
   int jump;
 };
 
+enum class ElementType { FIRE, WATER };
+
 class Entity {
   Rectangle body;
-  Vector2 acceleration = {0, Config::ACCELERATION};
   Vector2 velocity = Vector2Zero();
   bool grounded = false;
   float coyoteTimer = 0.0f;
   float jumpBufferTimer = 0.0f;
   Controls controls;
   Color color;
+  ElementType element;
+  Vector2 spawnPos;
 
 public:
-  Entity(Vector2 pos, Controls ctrl, Color col);
-  void changePos(Vector2);
-  Vector2 getPos() { return {body.x, body.y}; }
+  Entity(Vector2 pos, Controls ctrl, Color col, ElementType elem);
+  void respawn();
+  Rectangle getBody() const { return body; }
+  ElementType getElement() const { return element; }
+  Vector2 getPos() const { return {body.x, body.y}; }
   void draw();
-  void update(const std::vector<Rectangle> &level);
+  void update(const std::vector<Rectangle> &solids);
 };

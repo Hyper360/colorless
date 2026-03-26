@@ -2,17 +2,21 @@
 #include <cmath>
 #include <stdio.h>
 
-Entity::Entity(Vector2 pos, Controls ctrl, Color col)
-    : controls(ctrl), color(col) {
+Entity::Entity(Vector2 pos, Controls ctrl, Color col, ElementType elem)
+    : controls(ctrl), color(col), element(elem), spawnPos(pos) {
   body.x = pos.x;
   body.y = pos.y;
   body.width = Config::TILESIZE;
   body.height = Config::TILESIZE;
 }
 
-void Entity::changePos(Vector2 pos) {
-  body.x = pos.x;
-  body.y = pos.y;
+void Entity::respawn() {
+  body.x = spawnPos.x;
+  body.y = spawnPos.y;
+  velocity = Vector2Zero();
+  grounded = false;
+  coyoteTimer = 0.0f;
+  jumpBufferTimer = 0.0f;
 }
 
 void Entity::draw() { DrawRectangleRec(body, color); }
@@ -20,7 +24,7 @@ void Entity::draw() { DrawRectangleRec(body, color); }
 int getDir(float val) { return (val != 0) ? val / std::abs(val) : 0; }
 
 void Entity::update(const std::vector<Rectangle> &level) {
-  acceleration = Vector2Zero();
+  Vector2 acceleration = Vector2Zero();
 
   bool inputX = IsKeyDown(controls.left) || IsKeyDown(controls.right);
 
