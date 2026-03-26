@@ -178,6 +178,53 @@ void Game::levelSelect() {
   EndDrawing();
 }
 
+// Draws a single tile with optional accessibility overlays.
+static void drawTile(const LevelTile &t) {
+  const int TS = (int)Config::TILESIZE;
+  const int x  = (int)t.rect.x, y = (int)t.rect.y;
+
+  DrawRectangleRec(t.rect, tileColor(t.type));
+
+  if (Settings::highContrast)
+    DrawRectangleLinesEx(t.rect, 2, WHITE);
+
+  if (Settings::patternTiles) {
+    switch (t.type) {
+    case TileType::SOLID:
+      // diagonal cross-hatch
+      for (int i = 0; i < TS * 2; i += 6) {
+        DrawLine(x + i, y, x, y + i, {255, 255, 255, 90});
+        DrawLine(x + TS - i, y + TS, x + TS, y + TS - i, {255, 255, 255, 90});
+      }
+      break;
+    case TileType::FIRE:
+      // horizontal stripes
+      for (int i = 4; i < TS; i += 6)
+        DrawLine(x, y + i, x + TS, y + i, {255, 255, 255, 110});
+      break;
+    case TileType::WATER:
+      // vertical stripes
+      for (int i = 4; i < TS; i += 6)
+        DrawLine(x + i, y, x + i, y + TS, {255, 255, 255, 110});
+      break;
+    case TileType::EXIT:
+      // dot grid
+      for (int dx = 5; dx < TS; dx += 7)
+        for (int dy = 5; dy < TS; dy += 7)
+          DrawRectangle(x + dx, y + dy, 3, 3, {255, 255, 255, 150});
+      break;
+    }
+  }
+
+  if (Settings::shapeLabels && t.type != TileType::SOLID) {
+    const char *lbl = (t.type == TileType::FIRE)  ? "F"
+                    : (t.type == TileType::WATER) ? "W" : "E";
+    int fs = 14;
+    DrawText(lbl, x + TS / 2 - MeasureText(lbl, fs) / 2,
+             y + TS / 2 - fs / 2, fs, WHITE);
+  }
+}
+
 void Game::runLevel() {
   if (IsKeyPressed(KEY_ESCAPE) && winTimer <= 0.0f) {
     paused = !paused;
@@ -229,11 +276,15 @@ void Game::runLevel() {
 
   // --- Render game world to offscreen texture ---
   BeginTextureMode(renderTarget);
-  ClearBackground(WHITE);
+  ClearBackground(Settings::highContrast ? DARKGRAY : WHITE);
   for (auto &t : tiles)
-    DrawRectangleRec(t.rect, tileColor(t.type));
+    drawTile(t);
   p.draw();
   p2.draw();
+  if (Settings::highContrast) {
+    DrawRectangleLinesEx(p.getBody(),  2, BLACK);
+    DrawRectangleLinesEx(p2.getBody(), 2, BLACK);
+  }
   EndTextureMode();
 
   // --- Draw texture to screen through colorblind shader ---
