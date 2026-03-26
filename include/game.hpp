@@ -45,6 +45,7 @@ private:
   RenderTexture2D renderTarget;
   Shader          cbShader;
   int             rRowLoc = 0, gRowLoc = 0, bRowLoc = 0;
+  int             blurLoc = 0, vignetteLoc = 0;
   void setCbUniforms();
 
   // Screen objects (created on demand)

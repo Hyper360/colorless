@@ -8,24 +8,47 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-// Fragment shader: applies a 3x3 color matrix via three row vec3 uniforms.
-// Identity rows (default) produce no change.
+// Single post-process pass: color matrix + optional blur + optional vignette.
+// All uniforms default to identity / zero so the shader is a no-op when
+// no impairment is active.
 static const char *CB_FRAG = R"(
 #version 330
 in vec2 fragTexCoord;
 in vec4 fragColor;
 uniform sampler2D texture0;
 uniform vec4 colDiffuse;
-uniform vec3 rRow;
-uniform vec3 gRow;
-uniform vec3 bRow;
+uniform vec3  rRow;         // color matrix rows (identity = no change)
+uniform vec3  gRow;
+uniform vec3  bRow;
+uniform float blurRadius;   // 0 = off; ~4 = low acuity
+uniform float vignetteStr;  // 0 = off; ~1.2 = tunnel vision
 out vec4 finalColor;
 void main() {
-    vec4 c = texture(texture0, fragTexCoord);
-    finalColor = vec4(dot(rRow, c.rgb),
-                      dot(gRow, c.rgb),
-                      dot(bRow, c.rgb),
-                      c.a) * fragColor * colDiffuse;
+    vec2 uv = fragTexCoord;
+
+    // --- Blur (5x5 box, configurable radius) ---
+    vec4 c = vec4(0.0);
+    if (blurRadius > 0.0) {
+        vec2 ts = blurRadius / vec2(textureSize(texture0, 0));
+        for (int x = -2; x <= 2; x++)
+            for (int y = -2; y <= 2; y++)
+                c += texture(texture0, uv + vec2(x, y) * ts);
+        c /= 25.0;
+    } else {
+        c = texture(texture0, uv);
+    }
+
+    // --- Color matrix ---
+    vec3 rgb = vec3(dot(rRow, c.rgb), dot(gRow, c.rgb), dot(bRow, c.rgb));
+
+    // --- Vignette (tunnel vision) ---
+    if (vignetteStr > 0.0) {
+        float dist = length(uv - 0.5) * 2.0;
+        float v = 1.0 - smoothstep(0.35, 0.85, dist * vignetteStr);
+        rgb *= v;
+    }
+
+    finalColor = vec4(rgb, c.a) * fragColor * colDiffuse;
 }
 )";
 
@@ -41,6 +64,8 @@ Game::Game() {
   rRowLoc      = GetShaderLocation(cbShader, "rRow");
   gRowLoc      = GetShaderLocation(cbShader, "gRow");
   bRowLoc      = GetShaderLocation(cbShader, "bRow");
+  blurLoc      = GetShaderLocation(cbShader, "blurRadius");
+  vignetteLoc  = GetShaderLocation(cbShader, "vignetteStr");
 }
 
 // Sets rRow/gRow/bRow uniforms from current Settings flags.
@@ -75,6 +100,11 @@ void Game::setCbUniforms() {
   SetShaderValue(cbShader, rRowLoc, r, SHADER_UNIFORM_VEC3);
   SetShaderValue(cbShader, gRowLoc, g, SHADER_UNIFORM_VEC3);
   SetShaderValue(cbShader, bRowLoc, b, SHADER_UNIFORM_VEC3);
+
+  float blur     = Settings::lowAcuity    ? 4.0f : 0.0f;
+  float vignette = Settings::tunnelVision ? 1.2f : 0.0f;
+  SetShaderValue(cbShader, blurLoc,     &blur,     SHADER_UNIFORM_FLOAT);
+  SetShaderValue(cbShader, vignetteLoc, &vignette, SHADER_UNIFORM_FLOAT);
 }
 
 void Game::loadLevel(const std::string &path) {
