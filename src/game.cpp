@@ -87,10 +87,9 @@ void Game::levelSelect() {
 }
 
 void Game::runLevel() {
-  if (IsKeyPressed(KEY_ESCAPE) && winTimer <= 0.0f)
+  if (IsKeyPressed(KEY_ESCAPE) && winTimer <= 0.0f) {
     paused = !paused;
-
-  if (paused) {
+  } else if (paused) {
     pauseMenu.update();
     if (pauseMenu.wantsResume()) paused = false;
     if (pauseMenu.wantsQuit())   { paused = false; state = GameState::LEVEL_SELECT; }

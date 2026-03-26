@@ -77,8 +77,6 @@ void PauseMenu::update() {
     }
   }
 
-  if (IsKeyPressed(KEY_ESCAPE))
-    resumeRequested = true;
 }
 
 // ---------------------------------------------------------------------------
