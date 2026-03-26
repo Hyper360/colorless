@@ -128,7 +128,9 @@ void Game::runLevel() {
     }
     if (p1Exit && p2Exit)
       winTimer = 2.0f;
-  } else {
+  }
+
+  if (winTimer > 0.0f) {
     winTimer -= GetFrameTime();
     if (winTimer <= 0.0f)
       state = GameState::LEVEL_SELECT;
