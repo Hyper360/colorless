@@ -2,7 +2,8 @@
 #include <cmath>
 #include <stdio.h>
 
-Entity::Entity(Vector2 pos) {
+Entity::Entity(Vector2 pos, Controls ctrl, Color col)
+    : controls(ctrl), color(col) {
   body.x = pos.x;
   body.y = pos.y;
   body.width = Config::TILESIZE;
@@ -14,28 +15,20 @@ void Entity::changePos(Vector2 pos) {
   body.y = pos.y;
 }
 
-void Entity::moveX(int direction) {
-  acceleration.x = direction * Config::ACCELERATION;
-}
-
-void Entity::moveY(int direction) {
-  acceleration.y = direction * Config::ACCELERATION;
-}
-
-void Entity::draw() { DrawRectangleRec(body, RED); }
+void Entity::draw() { DrawRectangleRec(body, color); }
 
 int getDir(float val) { return (val != 0) ? val / std::abs(val) : 0; }
 
 void Entity::update(const std::vector<Rectangle> &level) {
   acceleration = Vector2Zero();
 
-  bool inputX = IsKeyDown(KEY_A) || IsKeyDown(KEY_D);
+  bool inputX = IsKeyDown(controls.left) || IsKeyDown(controls.right);
 
   // Horizontal: full acceleration on ground, reduced in air
   float accelMult = grounded ? 1.0f : Config::AIR_CONTROL;
-  if (IsKeyDown(KEY_A))
+  if (IsKeyDown(controls.left))
     acceleration.x = DIR::LEFT * Config::ACCELERATION * accelMult;
-  if (IsKeyDown(KEY_D))
+  if (IsKeyDown(controls.right))
     acceleration.x = DIR::RIGHT * Config::ACCELERATION * accelMult;
 
   // Coyote time: stay jumpable briefly after walking off a ledge
@@ -45,7 +38,7 @@ void Entity::update(const std::vector<Rectangle> &level) {
     coyoteTimer -= GetFrameTime();
 
   // Jump buffer: remember a jump press for a short window before landing
-  if (IsKeyPressed(KEY_W))
+  if (IsKeyPressed(controls.jump))
     jumpBufferTimer = Config::JUMP_BUFFER_TIME;
   else
     jumpBufferTimer -= GetFrameTime();
@@ -58,7 +51,7 @@ void Entity::update(const std::vector<Rectangle> &level) {
   }
 
   // Variable jump height: cut upward velocity when jump is released early
-  if (IsKeyReleased(KEY_W) && velocity.y < 0.0f)
+  if (IsKeyReleased(controls.jump) && velocity.y < 0.0f)
     velocity.y *= Config::JUMP_RELEASE_MULT;
 
   // Higher gravity when falling so the arc feels intentional, not floaty

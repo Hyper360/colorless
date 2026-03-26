@@ -11,6 +11,12 @@ enum DIR {
   LEFT = -1,
 };
 
+struct Controls {
+  int left;
+  int right;
+  int jump;
+};
+
 class Entity {
   Rectangle body;
   Vector2 acceleration = {0, Config::ACCELERATION};
@@ -18,12 +24,12 @@ class Entity {
   bool grounded = false;
   float coyoteTimer = 0.0f;
   float jumpBufferTimer = 0.0f;
+  Controls controls;
+  Color color;
 
 public:
-  Entity(Vector2 pos);
+  Entity(Vector2 pos, Controls ctrl, Color col);
   void changePos(Vector2);
-  void moveX(int right);
-  void moveY(int up);
   Vector2 getPos() { return {body.x, body.y}; }
   void draw();
   void update(const std::vector<Rectangle> &level);

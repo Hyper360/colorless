@@ -60,7 +60,8 @@ void Game::levelSelect() {
 
   if (selector->wantsPlay()) {
     loadLevel(selector->getSelected());
-    p = Entity({200, 200});
+    p  = Entity({200, 200}, {KEY_A, KEY_D, KEY_W},          RED);
+    p2 = Entity({240, 200}, {KEY_LEFT, KEY_RIGHT, KEY_UP},  BLUE);
     state = GameState::LEVEL;
   } else if (selector->wantsEdit()) {
     editor = std::make_unique<LevelEditor>(selector->getSelected());
@@ -85,12 +86,14 @@ void Game::runLevel() {
     state = GameState::LEVEL_SELECT;
 
   p.update(levelTiles);
+  p2.update(levelTiles);
 
   BeginDrawing();
   ClearBackground(WHITE);
   for (auto &r : levelTiles)
     DrawRectangleRec(r, BLACK);
   p.draw();
+  p2.draw();
   DrawText("ESC: Back", 4, 4, 14, DARKGRAY);
   EndDrawing();
 }

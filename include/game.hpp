@@ -26,7 +26,8 @@ private:
   void runLevelEditor();
 
   // Level gameplay
-  Entity p{Vector2{200, 200}};
+  Entity p{{200, 200}, {KEY_A, KEY_D, KEY_W}, RED};
+  Entity p2{{240, 200}, {KEY_LEFT, KEY_RIGHT, KEY_UP}, BLUE};
   std::vector<Rectangle> levelTiles;
   std::string currentLevelPath;
 
