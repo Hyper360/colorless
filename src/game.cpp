@@ -87,8 +87,13 @@ void Game::levelSelect() {
 }
 
 void Game::runLevel() {
-  if (IsKeyPressed(KEY_ESCAPE))
-    state = GameState::LEVEL_SELECT;
+  if (IsKeyPressed(KEY_ESCAPE) && winTimer <= 0.0f) {
+    paused = !paused;
+  } else if (paused) {
+    pauseMenu.update();
+    if (pauseMenu.wantsResume()) paused = false;
+    if (pauseMenu.wantsQuit())   { paused = false; state = GameState::LEVEL_SELECT; }
+  }
 
   // Build solid list for physics
   std::vector<Rectangle> solids;
@@ -96,7 +101,7 @@ void Game::runLevel() {
     if (t.type == TileType::SOLID)
       solids.push_back(t.rect);
 
-  if (winTimer <= 0.0f) {
+  if (!paused && winTimer <= 0.0f) {
     p.update(solids);
     p2.update(solids);
 
@@ -122,7 +127,9 @@ void Game::runLevel() {
     }
     if (p1Exit && p2Exit)
       winTimer = 2.0f;
-  } else {
+  }
+
+  if (winTimer > 0.0f) {
     winTimer -= GetFrameTime();
     if (winTimer <= 0.0f)
       state = GameState::LEVEL_SELECT;
@@ -134,13 +141,15 @@ void Game::runLevel() {
     DrawRectangleRec(t.rect, tileColor(t.type));
   p.draw();
   p2.draw();
-  DrawText("ESC: Back", 4, 4, 14, DARKGRAY);
+  DrawText("ESC: Pause", 4, 4, 14, DARKGRAY);
   if (winTimer > 0.0f) {
     const int W = GetScreenWidth(), H = GetScreenHeight();
     DrawRectangle(0, 0, W, H, {0, 0, 0, 160});
     const char *msg = "YOU WIN!";
     DrawText(msg, W / 2 - MeasureText(msg, 60) / 2, H / 2 - 30, 60, YELLOW);
   }
+  if (paused)
+    pauseMenu.draw();
   EndDrawing();
 }
 

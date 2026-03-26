@@ -2,6 +2,7 @@
 #include "entity.hpp"
 #include "leveleditor.hpp"
 #include "levelselector.hpp"
+#include "pausemenu.hpp"
 #include "tile.hpp"
 #include <cstdint>
 #include <memory>
@@ -37,6 +38,8 @@ private:
   std::vector<LevelTile> tiles;
   std::string currentLevelPath;
   float winTimer = 0.0f;
+  bool paused = false;
+  PauseMenu pauseMenu;
 
   // Screen objects (created on demand)
   std::unique_ptr<LevelSelector> selector;
