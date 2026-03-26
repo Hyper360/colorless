@@ -35,6 +35,7 @@ void LevelEditor::removeObjectAt(int tx, int ty) {
 
 void LevelEditor::save() {
   json j;
+  if (levelCbMode != 0) j["colorblind"] = levelCbMode;
   j["tiles"] = json::array();
   for (auto &t : tiles)
     j["tiles"].push_back({{"x", t.x}, {"y", t.y}, {"type", (int)t.type}});
@@ -60,6 +61,7 @@ void LevelEditor::load() {
   if (!f.is_open() || f.peek() == std::ifstream::traits_type::eof()) return;
   try {
     json j = json::parse(f);
+    levelCbMode = j.contains("colorblind") ? j["colorblind"].get<int>() : 0;
     for (auto &t : j["tiles"]) {
       TileType type = TileType::SOLID;
       if (t.contains("type")) type = static_cast<TileType>(t["type"].get<int>());
@@ -104,6 +106,7 @@ void LevelEditor::update() {
     if (IsKeyPressed(KEY_THREE)) selectedType = TileType::WATER;
     if (IsKeyPressed(KEY_FOUR))  selectedType = TileType::EXIT_P1;
     if (IsKeyPressed(KEY_FIVE))  selectedType = TileType::EXIT_P2;
+    if (IsKeyPressed(KEY_SIX))   selectedType = TileType::SPIKE;
 
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))  { removeTile(gx, gy); tiles.push_back({gx, gy, selectedType}); }
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) removeTile(gx, gy);
@@ -119,17 +122,19 @@ void LevelEditor::update() {
     if (IsKeyPressed(KEY_EIGHT)) selectedObj = ObjType::PUSHABLE_BLOCK;
     if (IsKeyPressed(KEY_NINE))  selectedObj = ObjType::SPAWN_P1;
     if (IsKeyPressed(KEY_ZERO))  selectedObj = ObjType::SPAWN_P2;
+    if (IsKeyPressed(KEY_Q))     selectedObj = ObjType::CRUSHER;
+    if (IsKeyPressed(KEY_E))     selectedObj = ObjType::ELECTRIC;
 
     // Link ID: [ and ]
     if (IsKeyPressed(KEY_LEFT_BRACKET))  linkId = std::max(0, linkId - 1);
     if (IsKeyPressed(KEY_RIGHT_BRACKET)) linkId = std::min(9, linkId + 1);
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-      if (selectedObj == ObjType::MOVING_PLATFORM) {
+      if (selectedObj == ObjType::MOVING_PLATFORM || selectedObj == ObjType::CRUSHER) {
         if (!pendingMP) {
-          pendingMP = true; mpTX = gx; mpTY = gy;
+          pendingMP = true; mpTX = gx; mpTY = gy; pendingMPType = selectedObj;
         } else {
-          EditorObject o{ObjType::MOVING_PLATFORM, mpTX, mpTY, linkId, gx, gy};
+          EditorObject o{pendingMPType, mpTX, mpTY, linkId, gx, gy};
           removeObjectAt(mpTX, mpTY);
           objects.push_back(o);
           pendingMP = false;
@@ -156,6 +161,7 @@ void LevelEditor::update() {
   if (IsKeyPressed(KEY_F5))            save();       // F5 always saves
   if (IsKeyPressed(KEY_L))             load();
   if (IsKeyPressed(KEY_C))           { tiles.clear(); objects.clear(); }
+  if (IsKeyPressed(KEY_M))             levelCbMode = (levelCbMode + 1) % 5;
   if (IsKeyPressed(KEY_ESCAPE))        exitRequested = true;
 
   savedTimer -= GetFrameTime();
@@ -200,6 +206,13 @@ void LevelEditor::draw() {
       DrawText(o.type == ObjType::SPAWN_P1 ? "P1" : "P2",
                ox + TS/2 - 7, oy + TS/2 - 6, 12, WHITE);
       break;
+    case ObjType::CRUSHER:
+      DrawRectangle(ox, oy, TS, TS, col);
+      DrawLine(ox, oy, ox+TS, oy+TS, {255,80,80,200});
+      DrawLine(ox+TS, oy, ox, oy+TS, {255,80,80,200});
+      break;
+    case ObjType::ELECTRIC:
+      DrawRectangle(ox, oy, TS, TS/4, col); break;
     default: DrawRectangle(ox, oy, TS, TS, col); break;
     }
 
@@ -213,9 +226,11 @@ void LevelEditor::draw() {
     if (o.type == ObjType::CONVEYOR_RIGHT) DrawText(">", ox + TS/3, oy + 1, 11, WHITE);
   }
 
-  // Pending moving platform origin
+  // Pending moving platform / crusher origin
   if (pendingMP) {
-    DrawRectangle(mpTX*TS, mpTY*TS, TS, TS*2/5, {100,255,100,180});
+    Color pc = (pendingMPType == ObjType::CRUSHER) ? Color{255,80,80,180} : Color{100,255,100,180};
+    int   ph = (pendingMPType == ObjType::CRUSHER) ? TS : TS*2/5;
+    DrawRectangle(mpTX*TS, mpTY*TS, TS, ph, pc);
     DrawText("2nd click = endpoint", mpTX*TS, mpTY*TS - 16, 13, GREEN);
   }
 
@@ -236,18 +251,26 @@ void LevelEditor::draw() {
 
   // Toolbar
   DrawRectangle(0, 0, W, 22, {0,0,0,190});
+  static const char *cbNames[] = {"none","deut","prot","trit","achro"};
   if (!objMode) {
-    DrawText("LMB:Place RMB:Erase C:Clear S/F5:Save L:Load ESC:Back | 1-5:Tile TAB:ObjMode",
+    DrawText("LMB:Place RMB:Erase C:Clear S/F5:Save L:Load ESC:Back | 1-6:Tile M:CB TAB:ObjMode",
              4, 4, 12, WHITE);
     const char *tn = tileName(selectedType);
     std::string sel = std::string("[ ") + tn + " ]";
     DrawText(sel.c_str(), W - MeasureText(sel.c_str(), 13) - 4, 4, 13, tileColor(selectedType));
   } else {
-    DrawText("LMB:Place RMB:Erase C:Clear F5:Save L:Load ESC:Back | 1-8:Obj 9:SP1 0:SP2 [/]:Link TAB:TileMode",
-             4, 4, 12, WHITE);
+    DrawText("LMB:Place RMB:Erase C:Clear F5:Save L:Load ESC:Back | 1-8:Obj 9:SP1 0:SP2 Q:Crush E:Elec [/]:Link M:CB TAB:TileMode",
+             4, 4, 11, WHITE);
     char selBuf[64];
     snprintf(selBuf, sizeof(selBuf), "[ %s  link:%d ]", objTypeName(selectedObj), linkId);
     DrawText(selBuf, W - MeasureText(selBuf, 13) - 4, 4, 13, objColor(selectedObj));
+  }
+
+  // Colorblind mode indicator
+  if (levelCbMode != 0) {
+    char cbBuf[32];
+    snprintf(cbBuf, sizeof(cbBuf), "CB:%s", cbNames[levelCbMode]);
+    DrawText(cbBuf, W/2 - MeasureText(cbBuf,13)/2 + 60, 4, 13, YELLOW);
   }
 
   // Level name
