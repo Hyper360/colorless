@@ -39,13 +39,15 @@ private:
   ObjType selectedObj = ObjType::PRESSURE_PLATE;
   int     linkId      = 1;          // current link channel for plate/lever/gate
   bool    objMode     = false;      // false=tile, true=object
-  bool    pendingMP   = false;      // awaiting endpoint for moving platform
+  bool    pendingMP     = false;      // awaiting endpoint for moving platform / crusher
+  ObjType pendingMPType = ObjType::MOVING_PLATFORM; // which 2-click object is pending
   int     mpTX = 0, mpTY = 0;
   void removeObjectAt(int tx, int ty);
 
   // --- Shared ---
-  float savedTimer   = 0.0f;
+  float savedTimer    = 0.0f;
   bool  exitRequested = false;
+  int   levelCbMode   = 0;  // 0=none 1=deut 2=prot 3=trit 4=achro
   void save();
   void load();
 };

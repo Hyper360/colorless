@@ -12,8 +12,10 @@ enum class ObjType : int {
     PUSHABLE_BLOCK   = 7,
     SPAWN_P1         = 8,  // editor marker only — consumed by loadLevel, not added to objects
     SPAWN_P2         = 9,
+    CRUSHER          = 10, // deadly moving block; speed=px/s, origin→endpoint patrol
+    ELECTRIC         = 11, // timed deadly bar; speed=period(s), active=electrified
 };
-constexpr int OBJ_TYPE_COUNT = 10;
+constexpr int OBJ_TYPE_COUNT = 12;
 
 struct LevelObject {
     ObjType   type;
@@ -51,6 +53,8 @@ inline const char *objTypeName(ObjType t) {
     case ObjType::PUSHABLE_BLOCK:   return "block";
     case ObjType::SPAWN_P1:        return "spawn-P1";
     case ObjType::SPAWN_P2:        return "spawn-P2";
+    case ObjType::CRUSHER:         return "crusher";
+    case ObjType::ELECTRIC:        return "electric";
     default:                        return "?";
     }
 }
@@ -70,6 +74,8 @@ inline Color objColor(ObjType t, bool active = false) {
     case ObjType::PUSHABLE_BLOCK:   return {140, 140, 150, 255};
     case ObjType::SPAWN_P1:        return {255, 80,  80,  200};
     case ObjType::SPAWN_P2:        return {80,  140, 255, 200};
+    case ObjType::CRUSHER:         return {190, 40,  40,  255};
+    case ObjType::ELECTRIC:        return active ? Color{255,240,40,255} : Color{90,90,30,255};
     default:                        return PINK;
     }
 }

@@ -76,22 +76,28 @@ void Game::setCbUniforms() {
   float g[3] = {0, 1, 0};
   float b[3] = {0, 0, 1};
 
-  if (Settings::deuteranopia) {
+  // levelCbMode overrides Settings flags so a level can force a colorblind perspective
+  bool deut  = Settings::deuteranopia  || levelCbMode == 1;
+  bool prot  = Settings::protanopia    || levelCbMode == 2;
+  bool trit  = Settings::tritanopia    || levelCbMode == 3;
+  bool achro = Settings::achromatopsia || levelCbMode == 4;
+
+  if (deut) {
     float nr[] = {0.625f, 0.375f, 0.0f};
     float ng[] = {0.700f, 0.300f, 0.0f};
     float nb[] = {0.0f,   0.300f, 0.700f};
     memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
-  } else if (Settings::protanopia) {
+  } else if (prot) {
     float nr[] = {0.567f, 0.433f, 0.0f};
     float ng[] = {0.558f, 0.442f, 0.0f};
     float nb[] = {0.0f,   0.242f, 0.758f};
     memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
-  } else if (Settings::tritanopia) {
+  } else if (trit) {
     float nr[] = {0.950f, 0.050f, 0.0f};
     float ng[] = {0.0f,   0.433f, 0.567f};
     float nb[] = {0.0f,   0.475f, 0.525f};
     memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
-  } else if (Settings::achromatopsia) {
+  } else if (achro) {
     float nr[] = {0.299f, 0.587f, 0.114f};
     float ng[] = {0.299f, 0.587f, 0.114f};
     float nb[] = {0.299f, 0.587f, 0.114f};
@@ -128,9 +134,10 @@ void Game::loadLevel(const std::string &path) {
       tiles.push_back({type, {x, y, ts, ts}});
     }
 
-    // Reset spawns to defaults; level JSON overrides them via SPAWN_P1/P2 objects
-    p1Spawn = {200, 200};
-    p2Spawn = {240, 200};
+    // Reset per-level state
+    p1Spawn    = {200, 200};
+    p2Spawn    = {240, 200};
+    levelCbMode = j.contains("colorblind") ? j["colorblind"].get<int>() : 0;
 
     if (j.contains("objects")) {
       for (auto &o : j["objects"]) {
@@ -172,6 +179,21 @@ void Game::loadLevel(const std::string &path) {
           break;
         case ObjType::PUSHABLE_BLOCK:
           lo.rect = {tx, ty, ts, ts};
+          break;
+        case ObjType::CRUSHER: {
+          float etx = o.contains("ex") ? (float)o["ex"].get<int>()*ts : tx + ts*4;
+          float ety = o.contains("ey") ? (float)o["ey"].get<int>()*ts : ty;
+          lo.origin   = {tx,  ty};
+          lo.endpoint = {etx, ety};
+          lo.rect     = {tx,  ty, ts, ts};
+          lo.speed    = o.contains("speed") ? o["speed"].get<float>() : 120.0f;
+          break;
+        }
+        case ObjType::ELECTRIC:
+          lo.rect   = {tx, ty, ts, ts * 0.25f};
+          lo.speed  = o.contains("speed") ? o["speed"].get<float>() : 1.5f; // period in seconds
+          lo.tParam = 0.0f;
+          lo.active = true;
           break;
         default: break;
         }
@@ -248,8 +270,26 @@ static void drawTile(const LevelTile &t) {
     case TileType::WATER:   baseColor = {0,   220, 255, 255}; break;
     case TileType::EXIT_P1: baseColor = {255, 80,  80,  255}; break;
     case TileType::EXIT_P2: baseColor = {80,  160, 255, 255}; break;
+    case TileType::SPIKE:   baseColor = {200, 200, 220, 255}; break;
     }
   }
+
+  // Spike tiles: draw the base rect then triangle spikes pointing upward
+  if (t.type == TileType::SPIKE) {
+    DrawRectangleRec(t.rect, baseColor);
+    constexpr int N = 3;
+    float sw = (float)TS / N;
+    for (int i = 0; i < N; i++) {
+      float sx = (float)x + i * sw;
+      DrawTriangle({sx + sw * 0.5f, (float)y},
+                   {sx,             (float)(y + TS)},
+                   {sx + sw,        (float)(y + TS)},
+                   {30, 30, 40, 220});
+    }
+    if (Settings::highContrast) DrawRectangleLinesEx(t.rect, 2, WHITE);
+    return; // skip generic DrawRectangleRec below
+  }
+
   DrawRectangleRec(t.rect, baseColor);
 
   if (Settings::highContrast)
@@ -292,6 +332,11 @@ static void drawTile(const LevelTile &t) {
         for (int dy = 5; dy < TS; dy += 7)
           DrawRectangle(x + dx, y + dy, 3, 3, {255, 255, 255, 220});
       break;
+    case TileType::SPIKE:
+      // vertical lines (distinct from diagonal/wave/dot patterns)
+      for (int col = 4; col < TS; col += 6)
+        DrawLine(x + col, y, x + col, y + TS, {255, 255, 255, 220});
+      break;
     }
   }
 
@@ -314,6 +359,12 @@ static void drawTile(const LevelTile &t) {
       DrawTriangle({cx - sz, cy - sz*0.3f}, {cx + sz, cy - sz*0.3f}, {cx, cy + sz}, {0,0,0,200});
       DrawText("2", (int)cx - 3, (int)(cy - sz*0.25f), 10, WHITE);
       break;
+    case TileType::SPIKE: {
+      // downward-pointing triangle = danger marker
+      float sw = sz * 1.3f;
+      DrawTriangle({cx - sw, cy - sz*0.5f}, {cx + sw, cy - sz*0.5f}, {cx, cy + sz}, {0,0,0,200});
+      break;
+    }
     default: break;
     }
   }
@@ -337,11 +388,25 @@ void Game::runLevel() {
     p2.update(solids);
     postUpdateObjects(solids); // carry, push, gates, falling, etc.
 
-    // Death: hazard tiles or falling off the bottom — always respawn both
+    // Death: hazard tiles, hazard objects, or falling off the bottom — always respawn both
     bool death = false;
     for (auto &t : tiles) {
       if (t.type == TileType::FIRE  && CheckCollisionRecs(p2.getBody(), t.rect)) death = true;
       if (t.type == TileType::WATER && CheckCollisionRecs(p.getBody(),  t.rect)) death = true;
+      if (t.type == TileType::SPIKE) {
+        if (CheckCollisionRecs(p.getBody(),  t.rect)) death = true;
+        if (CheckCollisionRecs(p2.getBody(), t.rect)) death = true;
+      }
+    }
+    for (auto &o : objects) {
+      if (o.type == ObjType::CRUSHER) {
+        if (CheckCollisionRecs(p.getBody(),  o.rect)) death = true;
+        if (CheckCollisionRecs(p2.getBody(), o.rect)) death = true;
+      }
+      if (o.type == ObjType::ELECTRIC && o.active) {
+        if (CheckCollisionRecs(p.getBody(),  o.rect)) death = true;
+        if (CheckCollisionRecs(p2.getBody(), o.rect)) death = true;
+      }
     }
     if (p.getBody().y  > GetScreenHeight()) death = true;
     if (p2.getBody().y > GetScreenHeight()) death = true;
@@ -447,6 +512,8 @@ std::vector<Rectangle> Game::buildSolids() const {
       if (!o.active) s.push_back(o.rect); break;
     case ObjType::FALLING_PLATFORM:
       if (!o.falling) s.push_back(o.rect); break;
+    case ObjType::CRUSHER:
+      s.push_back(o.rect); break;
     default: break;
     }
     // Pushable blocks intentionally excluded — push resolution handles them separately
@@ -457,6 +524,15 @@ std::vector<Rectangle> Game::buildSolids() const {
 // Must be called BEFORE entity physics so conveyor velocity is included in this frame's update.
 void Game::preUpdateObjects() {
   const float dt  = GetFrameTime();
+
+  // Electric hazard: tick the phase timer, update active state
+  for (auto &o : objects) {
+    if (o.type != ObjType::ELECTRIC) continue;
+    o.tParam += dt;
+    if (o.tParam >= o.speed) o.tParam = 0.0f;
+    o.active = (o.tParam < o.speed * 0.5f);
+  }
+
   const float spd = 100.0f; // conveyor belt speed px/s
   for (auto &o : objects) {
     if (o.type != ObjType::CONVEYOR_LEFT && o.type != ObjType::CONVEYOR_RIGHT) continue;
@@ -476,7 +552,7 @@ void Game::postUpdateObjects(const std::vector<Rectangle> &solids) {
 
   // 1. Moving platforms: advance patrol, carry players
   for (auto &o : objects) {
-    if (o.type != ObjType::MOVING_PLATFORM) continue;
+    if (o.type != ObjType::MOVING_PLATFORM && o.type != ObjType::CRUSHER) continue;
     float dist = Vector2Distance(o.origin, o.endpoint);
     if (dist < 1.0f) continue;
     Vector2 prev = {o.rect.x, o.rect.y};
@@ -487,11 +563,14 @@ void Game::postUpdateObjects(const std::vector<Rectangle> &solids) {
     o.rect.y = o.origin.y + (o.endpoint.y - o.origin.y) * o.tParam;
     Vector2 delta = {o.rect.x - prev.x, o.rect.y - prev.y};
 
-    for (Entity *e : {&p, &p2}) {
-      Rectangle pb = e->getBody();
-      if (std::abs((pb.y + pb.height) - prev.y) <= 4.0f &&
-          pb.x + pb.width > prev.x && pb.x < prev.x + o.rect.width)
-        e->nudge(delta);
+    // Only moving platforms carry players; crushers kill them (handled in runLevel)
+    if (o.type == ObjType::MOVING_PLATFORM) {
+      for (Entity *e : {&p, &p2}) {
+        Rectangle pb = e->getBody();
+        if (std::abs((pb.y + pb.height) - prev.y) <= 4.0f &&
+            pb.x + pb.width > prev.x && pb.x < prev.x + o.rect.width)
+          e->nudge(delta);
+      }
     }
   }
 
@@ -684,6 +763,21 @@ void Game::drawObjects() {
     case ObjType::PUSHABLE_BLOCK:
       DrawLine((int)o.rect.x, (int)o.rect.y, (int)(o.rect.x+o.rect.width), (int)(o.rect.y+o.rect.height), {90,90,100,180});
       DrawLine((int)(o.rect.x+o.rect.width), (int)o.rect.y, (int)o.rect.x, (int)(o.rect.y+o.rect.height), {90,90,100,180});
+      break;
+    case ObjType::CRUSHER:
+      // X marks the deadly block
+      DrawLine((int)o.rect.x,              (int)o.rect.y,              (int)(o.rect.x+o.rect.width), (int)(o.rect.y+o.rect.height), {255,80,80,200});
+      DrawLine((int)(o.rect.x+o.rect.width),(int)o.rect.y,             (int)o.rect.x,                (int)(o.rect.y+o.rect.height), {255,80,80,200});
+      DrawRectangleLinesEx(o.rect, 2, {255, 60, 60, 255});
+      break;
+    case ObjType::ELECTRIC:
+      DrawRectangleLinesEx(o.rect, 1, o.active ? Color{255,255,100,255} : Color{60,60,20,255});
+      if (o.active) {
+        // Animated crackle: small bright highlight sweeping across
+        float phase = o.tParam / (o.speed * 0.5f); // 0..1 within active half
+        float bx = o.rect.x + phase * (o.rect.width - 4);
+        DrawRectangle((int)bx, (int)o.rect.y, 4, (int)o.rect.height, {255, 255, 220, 180});
+      }
       break;
     default: break;
     }

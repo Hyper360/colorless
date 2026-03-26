@@ -1,7 +1,7 @@
 #pragma once
 #include "raylib/raylib.h"
 
-enum class TileType : int { SOLID = 0, FIRE = 1, WATER = 2, EXIT_P1 = 3, EXIT_P2 = 4 };
+enum class TileType : int { SOLID = 0, FIRE = 1, WATER = 2, EXIT_P1 = 3, EXIT_P2 = 4, SPIKE = 5 };
 
 inline Color tileColor(TileType t) {
   switch (t) {
@@ -10,6 +10,7 @@ inline Color tileColor(TileType t) {
   case TileType::WATER:   return SKYBLUE;
   case TileType::EXIT_P1: return {220, 80,  80,  255}; // red-tinted: fire player's door
   case TileType::EXIT_P2: return {80,  160, 220, 255}; // blue-tinted: water player's door
+  case TileType::SPIKE:   return {140, 140, 155, 255}; // metallic gray
   default:                return BLACK;
   }
 }
@@ -21,6 +22,7 @@ inline const char *tileName(TileType t) {
   case TileType::WATER:   return "Water";
   case TileType::EXIT_P1: return "Exit-P1";
   case TileType::EXIT_P2: return "Exit-P2";
+  case TileType::SPIKE:   return "Spike";
   default:                return "?";
   }
 }

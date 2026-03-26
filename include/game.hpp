@@ -43,6 +43,7 @@ private:
   std::string currentLevelPath;
   float winTimer = 0.0f;
   bool paused = false;
+  int  levelCbMode = 0; // 0=none 1=deut 2=prot 3=trit 4=achro (per-level override)
   PauseMenu pauseMenu;
 
   // Post-process colorblind shader

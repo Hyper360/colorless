@@ -9,6 +9,5 @@ Colorless.html
 # Downloaded headers
 include/json.hpp
 
-# Levels (runtime data, not source)
-levels/*
-!levels/.gitkeep
+# Levels tracked as source
+# levels/*
