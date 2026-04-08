@@ -322,8 +322,8 @@ static void drawTile(const LevelTile &t) {
   if (Settings::highContrast) {
     switch (t.type) {
     case TileType::SOLID:   baseColor = {80,  80,  80,  255}; break;
-    case TileType::FIRE:    baseColor = {255, 100, 0,   255}; break;  // bright orange-red
-    case TileType::WATER:   baseColor = {0,   255, 100, 255}; break;  // bright green;
+    case TileType::FIRE:    baseColor = {255, 200, 0,   255}; break;
+    case TileType::WATER:   baseColor = {0,   220, 255, 255}; break;
     case TileType::EXIT_P1: baseColor = {255, 80,  80,  255}; break;
     case TileType::EXIT_P2: baseColor = {80,  160, 255, 255}; break;
     case TileType::SPIKE:   baseColor = {200, 200, 220, 255}; break;
@@ -488,7 +488,12 @@ void Game::runLevel() {
     }
     if (p.getBody().y  > GetScreenHeight()) death = true;
     if (p2.getBody().y > GetScreenHeight()) death = true;
-    if (death) { p.respawn(); p2.respawn(); }
+    if (death) {
+      // Full level reset: reload all objects (gates, levers, blocks, etc.)
+      loadLevel(currentLevelPath);
+      p  = Entity(p1Spawn, {KEY_A, KEY_D, KEY_W, KEY_S},           RED,  ElementType::FIRE);
+      p2 = Entity(p2Spawn, {KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN}, BLUE, ElementType::WATER);
+    }
 
     // Win: p1 on EXIT_P1 and p2 on EXIT_P2 simultaneously
     bool p1Exit = false, p2Exit = false;
