@@ -13,9 +13,9 @@ struct EditorTile {
 
 struct EditorObject {
   ObjType type;
-  int tx, ty;         // top-left tile position
+  int tx, ty;
   int linkId = 0;
-  int etx = -1, ety = -1; // endpoint (moving platform only; -1 = default)
+  int etx = -1, ety = -1;
 };
 
 class LevelEditor {
@@ -28,26 +28,53 @@ public:
 private:
   std::string levelPath;
 
-  // --- Tile mode ---
+  // Editor state
   std::vector<EditorTile> tiles;
-  TileType selectedType = TileType::SOLID;
+  std::vector<EditorObject> objects;
+  std::vector<EditorTile> undoTiles;
+  std::vector<EditorObject> undoObjects;
+  bool objMode = false;
+  bool showHelp = true;
+  float savedTimer = 0.0f;
+  bool exitRequested = false;
+  int levelCbMode = 0;
+
+  // Tile mode state
+  TileType selectedTile = TileType::SOLID;
+
+  // Object mode state
+  ObjType selectedObj = ObjType::PRESSURE_PLATE;
+  int linkId = 1;
+  bool awaitingSecondClick = false;
+  int firstClickX = 0, firstClickY = 0;
+
+  // Tile helpers
   bool hasTile(int x, int y) const;
   void removeTile(int x, int y);
+  void placeTile(int x, int y, TileType type);
 
-  // --- Object mode ---
-  std::vector<EditorObject> objects;
-  ObjType selectedObj = ObjType::PRESSURE_PLATE;
-  int     linkId      = 1;          // current link channel for plate/lever/gate
-  bool    objMode     = false;      // false=tile, true=object
-  bool    pendingMP     = false;      // awaiting endpoint for moving platform / crusher
-  ObjType pendingMPType = ObjType::MOVING_PLATFORM; // which 2-click object is pending
-  int     mpTX = 0, mpTY = 0;
+  // Object helpers
   void removeObjectAt(int tx, int ty);
+  EditorObject* findObjectAt(int tx, int ty);
+  void placeObject(int tx, int ty);
 
-  // --- Shared ---
-  float savedTimer    = 0.0f;
-  bool  exitRequested = false;
-  int   levelCbMode   = 0;  // 0=none 1=deut 2=prot 3=trit 4=achro
+  // Two-click objects (moving platform, crusher)
+  bool isTwoClickObject(ObjType type) const;
+  void handleTwoClickFirst(int tx, int ty);
+  void handleTwoClickSecond(int tx, int ty);
+
+  // Spawn handling
+  bool isSpawnType(ObjType type) const;
+  void placeSpawn(int tx, int ty);
+
+  // File operations
   void save();
   void load();
+  void saveUndoState();
+
+  // Drawing helpers
+  void drawTilePreview(int gridX, int gridY);
+  void drawObject(const EditorObject &o);
+  void drawToolbar();
+  void drawHelpPanel();
 };
