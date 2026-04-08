@@ -23,9 +23,10 @@ uniform vec3  gRow;
 uniform vec3  bRow;
 uniform float blurRadius;   // 0 = off; ~4 = low acuity
 uniform float vignetteStr;  // 0 = off; ~1.2 = tunnel vision
+uniform vec2  jitterOff;    // nystagmus UV offset (0,0 = off)
 out vec4 finalColor;
 void main() {
-    vec2 uv = fragTexCoord;
+    vec2 uv = fragTexCoord + jitterOff;
 
     // --- Blur (5x5 box, configurable radius) ---
     vec4 c = vec4(0.0);
@@ -67,6 +68,7 @@ Game::Game() {
   bRowLoc      = GetShaderLocation(cbShader, "bRow");
   blurLoc      = GetShaderLocation(cbShader, "blurRadius");
   vignetteLoc  = GetShaderLocation(cbShader, "vignetteStr");
+  jitterLoc    = GetShaderLocation(cbShader, "jitterOff");
 }
 
 // Sets rRow/gRow/bRow uniforms from current Settings flags.
@@ -79,25 +81,23 @@ void Game::setCbUniforms() {
   // levelCbMode overrides Settings flags so a level can force a colorblind perspective
   bool deut  = Settings::deuteranopia  || levelCbMode == 1;
   bool prot  = Settings::protanopia    || levelCbMode == 2;
-  bool trit  = Settings::tritanopia    || levelCbMode == 3;
-  bool achro = Settings::achromatopsia || levelCbMode == 4;
+  bool achro = Settings::achromatopsia || levelCbMode == 3;
 
   if (deut) {
-    float nr[] = {0.625f, 0.375f, 0.0f};
-    float ng[] = {0.700f, 0.300f, 0.0f};
-    float nb[] = {0.0f,   0.300f, 0.700f};
+    // Deuteranopia: strong red-green confusion. Red and green collapse to yellow-brown.
+    // Machado et al. severity ~0.9 — makes fire (red) and water (green) nearly identical.
+    float nr[] = {0.80f, 0.20f, 0.0f};
+    float ng[] = {0.26f, 0.74f, 0.0f};
+    float nb[] = {0.0f,  0.14f, 0.86f};
     memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
   } else if (prot) {
-    float nr[] = {0.567f, 0.433f, 0.0f};
-    float ng[] = {0.558f, 0.442f, 0.0f};
-    float nb[] = {0.0f,   0.242f, 0.758f};
-    memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
-  } else if (trit) {
-    float nr[] = {0.950f, 0.050f, 0.0f};
-    float ng[] = {0.0f,   0.433f, 0.567f};
-    float nb[] = {0.0f,   0.475f, 0.525f};
+    // Protanopia: strong red-green confusion. Red looks dark/brownish, green stays similar.
+    float nr[] = {0.15f, 0.85f, 0.0f};
+    float ng[] = {0.15f, 0.85f, 0.0f};
+    float nb[] = {0.0f,  0.12f, 0.88f};
     memcpy(r, nr, 12); memcpy(g, ng, 12); memcpy(b, nb, 12);
   } else if (achro) {
+    // Achromatopsia: total colorblindness (greyscale)
     float nr[] = {0.299f, 0.587f, 0.114f};
     float ng[] = {0.299f, 0.587f, 0.114f};
     float nb[] = {0.299f, 0.587f, 0.114f};
@@ -112,6 +112,15 @@ void Game::setCbUniforms() {
   float vignette = Settings::tunnelVision ? 1.2f : 0.0f;
   SetShaderValue(cbShader, blurLoc,     &blur,     SHADER_UNIFORM_FLOAT);
   SetShaderValue(cbShader, vignetteLoc, &vignette, SHADER_UNIFORM_FLOAT);
+
+  // Nystagmus: involuntary rapid eye jitter — random UV offset each frame
+  float jitter[2] = {0.0f, 0.0f};
+  if (Settings::nystagmus) {
+    float t = (float)GetTime();
+    jitter[0] = sinf(t * 37.0f) * 0.008f + sinf(t * 53.0f) * 0.004f;
+    jitter[1] = cosf(t * 41.0f) * 0.006f + cosf(t * 67.0f) * 0.003f;
+  }
+  SetShaderValue(cbShader, jitterLoc, jitter, SHADER_UNIFORM_VEC2);
 }
 
 void Game::loadLevel(const std::string &path) {
@@ -313,8 +322,8 @@ static void drawTile(const LevelTile &t) {
   if (Settings::highContrast) {
     switch (t.type) {
     case TileType::SOLID:   baseColor = {80,  80,  80,  255}; break;
-    case TileType::FIRE:    baseColor = {255, 200, 0,   255}; break;
-    case TileType::WATER:   baseColor = {0,   220, 255, 255}; break;
+    case TileType::FIRE:    baseColor = {255, 100, 0,   255}; break;  // bright orange-red
+    case TileType::WATER:   baseColor = {0,   255, 100, 255}; break;  // bright green;
     case TileType::EXIT_P1: baseColor = {255, 80,  80,  255}; break;
     case TileType::EXIT_P2: baseColor = {80,  160, 255, 255}; break;
     case TileType::SPIKE:   baseColor = {200, 200, 220, 255}; break;

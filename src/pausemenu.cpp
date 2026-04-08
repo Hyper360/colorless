@@ -14,10 +14,10 @@ PauseMenu::Item PauseMenu::items[] = {
   {"## IMPAIRMENTS",      nullptr},
   {"  Deuteranopia",      &Settings::deuteranopia},
   {"  Protanopia",        &Settings::protanopia},
-  {"  Tritanopia",        &Settings::tritanopia},
   {"  Achromatopsia",     &Settings::achromatopsia},
   {"  Low Acuity",        &Settings::lowAcuity},
   {"  Tunnel Vision",     &Settings::tunnelVision},
+  {"  Nystagmus",         &Settings::nystagmus},
 
   {"## ACCESSIBILITY",    nullptr},
   {"  High Contrast",     &Settings::highContrast},
@@ -65,7 +65,7 @@ void PauseMenu::update() {
     } else if (item.toggle) {
       // Colorblind modes are mutually exclusive
       bool *cb[] = {&Settings::deuteranopia, &Settings::protanopia,
-                    &Settings::tritanopia,   &Settings::achromatopsia};
+                    &Settings::achromatopsia};
       bool isColorblind = false;
       for (auto *p : cb)
         if (p == item.toggle) { isColorblind = true; break; }

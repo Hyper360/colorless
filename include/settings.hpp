@@ -7,10 +7,10 @@ namespace Settings {
 // --- Impairments (simulate real visual conditions) ---
 inline bool deuteranopia   = false; // red-green: green receptor deficiency
 inline bool protanopia     = false; // red-green: red receptor deficiency
-inline bool tritanopia     = false; // blue-yellow colorblindness
 inline bool achromatopsia  = false; // total colorblindness (greyscale)
 inline bool lowAcuity      = false; // blurred vision
 inline bool tunnelVision   = false; // reduced peripheral field
+inline bool nystagmus      = false; // involuntary eye jitter (screen shake)
 
 // --- Accessibility features (mitigations) ---
 inline bool highContrast   = false; // high-contrast tile outlines
@@ -22,7 +22,6 @@ inline bool shapeLabels    = false; // icon labels on tile types
 inline void setColorblindMode(bool *chosen) {
   deuteranopia  = false;
   protanopia    = false;
-  tritanopia    = false;
   achromatopsia = false;
   if (chosen) *chosen = true;
 }
