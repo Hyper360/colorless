@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "raylib/raylib.h"
 #include "raylib/raymath.h"
+#include <cmath>
 #include <vector>
 
 enum DIR {
@@ -32,6 +33,14 @@ class Entity {
   ElementType element;
   Vector2 spawnPos;
 
+  // Motion trail ring buffer
+  Vector2 trailPos[5] = {};
+  int trailIdx = 0;
+
+  // Squash/stretch: tracks grounded transition
+  bool wasGrounded = false;
+  float landSquashTimer = 0.0f;
+
 public:
   Entity(Vector2 pos, Controls ctrl, Color col, ElementType elem);
   void respawn();
@@ -39,6 +48,7 @@ public:
   ElementType getElement() const { return element; }
   Vector2 getPos()        const { return {body.x, body.y}; }
   bool isGrounded()       const { return grounded; }
+  Vector2 getVelocity()   const { return velocity; }
 
   // Called by Game for interactive objects
   void nudge(Vector2 delta);          // direct position shift (moving platforms)

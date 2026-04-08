@@ -25,9 +25,54 @@ void Entity::respawn() {
   grounded = false;
   coyoteTimer = 0.0f;
   jumpBufferTimer = 0.0f;
+  wasGrounded = false;
+  landSquashTimer = 0.0f;
+  for (int i = 0; i < 5; i++) trailPos[i] = spawnPos;
+  trailIdx = 0;
 }
 
-void Entity::draw() { DrawRectangleRec(body, color); }
+void Entity::draw() {
+  // Draw motion trail (faded afterimages)
+  for (int i = 0; i < 5; i++) {
+    int idx = (trailIdx + i) % 5; // oldest first
+    float alpha = (i + 1) * 0.08f; // 0.08 .. 0.40
+    float scale = 0.5f + (i + 1) * 0.08f; // shrinking
+    float w = body.width * scale;
+    float h = body.height * scale;
+    float tx = trailPos[idx].x + (body.width - w) * 0.5f;
+    float ty = trailPos[idx].y + (body.height - h) * 0.5f;
+    DrawRectangle((int)tx, (int)ty, (int)w, (int)h,
+                  {color.r, color.g, color.b, (unsigned char)(alpha * 255)});
+  }
+
+  // Squash/stretch visual adjustment
+  Rectangle drawRect = body;
+  if (landSquashTimer > 0.0f) {
+    // Landing squash: wider & shorter
+    float t = landSquashTimer / 0.12f; // 0..1
+    float sx = 1.0f + 0.2f * t;
+    float sy = 1.0f - 0.15f * t;
+    float cxOld = drawRect.x + drawRect.width * 0.5f;
+    float cyOld = drawRect.y + drawRect.height;
+    drawRect.width  *= sx;
+    drawRect.height *= sy;
+    drawRect.x = cxOld - drawRect.width * 0.5f;
+    drawRect.y = cyOld - drawRect.height;
+  } else if (velocity.y < -100.0f) {
+    // Jumping stretch: taller & narrower
+    float t = std::min(1.0f, std::abs(velocity.y) / 300.0f);
+    float sx = 1.0f - 0.1f * t;
+    float sy = 1.0f + 0.2f * t;
+    float cxOld = drawRect.x + drawRect.width * 0.5f;
+    float cyOld = drawRect.y + drawRect.height;
+    drawRect.width  *= sx;
+    drawRect.height *= sy;
+    drawRect.x = cxOld - drawRect.width * 0.5f;
+    drawRect.y = cyOld - drawRect.height;
+  }
+
+  DrawRectangleRec(drawRect, color);
+}
 
 int getDir(float val) { return (val != 0) ? val / std::abs(val) : 0; }
 
@@ -87,6 +132,13 @@ void Entity::update(const std::vector<Rectangle> &level) {
   }
   velocity.y += acceleration.y * GetFrameTime();
 
+  // Update motion trail
+  trailPos[trailIdx] = {body.x, body.y};
+  trailIdx = (trailIdx + 1) % 5;
+
+  // Track landing for squash effect
+  wasGrounded = grounded;
+
   // Reset grounded — set again below if we land this frame
   grounded = false;
 
@@ -115,4 +167,9 @@ void Entity::update(const std::vector<Rectangle> &level) {
     }
   }
 
-};
+  // Trigger squash on landing transition
+  if (grounded && !wasGrounded)
+    landSquashTimer = 0.12f;
+  if (landSquashTimer > 0.0f)
+    landSquashTimer -= GetFrameTime();
+}

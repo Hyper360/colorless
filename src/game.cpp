@@ -131,7 +131,14 @@ void Game::loadLevel(const std::string &path) {
         type = static_cast<TileType>(t["type"].get<int>());
       float x = (float)t["x"].get<int>() * ts;
       float y = (float)t["y"].get<int>() * ts;
-      tiles.push_back({type, {x, y, ts, ts}});
+      if (type == TileType::FIRE || type == TileType::WATER || type == TileType::SPIKE) {
+        // Hazard tiles: bottom half is solid ground, top half is the hazard
+        Rectangle hazardRect = {x, y, ts, ts * 0.5f};          // top half = danger zone
+        Rectangle solidRect  = {x, y + ts * 0.5f, ts, ts * 0.5f}; // bottom half = walkable
+        tiles.push_back({type, hazardRect, solidRect});
+      } else {
+        tiles.push_back({type, {x, y, ts, ts}, {x, y, ts, ts}});
+      }
     }
 
     // Reset per-level state
@@ -221,8 +228,28 @@ void Game::menu() {
   const int W = GetScreenWidth(), H = GetScreenHeight();
   BeginDrawing();
   ClearBackground(BLACK);
+
+  // Animated floating particles
+  double time = GetTime();
+  for (int i = 0; i < 15; i++) {
+    float seed = (float)i * 1.7f;
+    float px = W * 0.5f + std::sin(seed + time * 0.3f) * W * 0.35f;
+    float py = (float)H - std::fmod((float)(time * 20.0 + seed * 80.0), (float)H);
+    // Cycle between dim red and dim blue
+    float blend = std::sin(seed + (float)time * 0.5f) * 0.5f + 0.5f;
+    unsigned char r = (unsigned char)(120 * (1.0f - blend));
+    unsigned char b = (unsigned char)(120 * blend);
+    DrawCircleV({px, py}, 3.0f, {r, 20, b, 120});
+  }
+
+  // Pulsing glow on title
   const char *title = "COLORLESS";
-  DrawText(title, W / 2 - MeasureText(title, 52) / 2, H / 3, 52, WHITE);
+  int titleW = MeasureText(title, 52);
+  float pulse = (std::sin((float)time * 2.0f) * 0.5f + 0.5f);
+  unsigned char ga = (unsigned char)(40 + pulse * 60);
+  DrawText(title, W / 2 - MeasureText(title, 58) / 2, H / 3 - 3, 58, {255, 255, 255, ga});
+  DrawText(title, W / 2 - titleW / 2, H / 3, 52, WHITE);
+
   const char *sub = "Press ENTER";
   DrawText(sub, W / 2 - MeasureText(sub, 22) / 2, H / 2, 22, GRAY);
   EndDrawing();
@@ -258,8 +285,28 @@ void Game::levelSelect() {
 // Draws a single tile with optional accessibility overlays.
 static void drawTile(const LevelTile &t) {
   const int TS = (int)Config::TILESIZE;
+  const int HTS = TS / 2; // half tile size
+  const bool isHazard = (t.type == TileType::FIRE || t.type == TileType::WATER || t.type == TileType::SPIKE);
+
+  // For hazards: rect = top half (hazard visual), solidRect = bottom half (ground)
+  // Draw the solid ground portion first for hazard tiles
+  if (isHazard) {
+    Color groundColor = Settings::highContrast ? Color{80, 80, 80, 255} : BLACK;
+    DrawRectangleRec(t.solidRect, groundColor);
+    if (Settings::highContrast) {
+      Color light = ColorBrightness(groundColor, 0.35f);
+      Color dark  = ColorBrightness(groundColor, -0.35f);
+      DrawRectangle((int)t.solidRect.x, (int)t.solidRect.y, (int)t.solidRect.width, 2, light);
+      DrawRectangle((int)t.solidRect.x, (int)t.solidRect.y, 2, (int)t.solidRect.height, light);
+      DrawRectangle((int)t.solidRect.x, (int)(t.solidRect.y + t.solidRect.height - 2), (int)t.solidRect.width, 2, dark);
+      DrawRectangle((int)(t.solidRect.x + t.solidRect.width - 2), (int)t.solidRect.y, 2, (int)t.solidRect.height, dark);
+    }
+  }
+
+  // Position/size for the drawable part (full tile for solids, top half for hazards)
   const int x  = (int)t.rect.x, y = (int)t.rect.y;
-  const float cx = x + TS * 0.5f, cy = y + TS * 0.5f;
+  const int drawH = isHazard ? HTS : TS;
+  const float cx = x + TS * 0.5f, cy = y + drawH * 0.5f;
 
   // High contrast: swap tile color to high-luminance palette meeting 7:1 ratio
   Color baseColor = tileColor(t.type);
@@ -279,11 +326,12 @@ static void drawTile(const LevelTile &t) {
     DrawRectangleRec(t.rect, baseColor);
     constexpr int N = 3;
     float sw = (float)TS / N;
+    float spikeH = t.rect.height;
     for (int i = 0; i < N; i++) {
       float sx = (float)x + i * sw;
       DrawTriangle({sx + sw * 0.5f, (float)y},
-                   {sx,             (float)(y + TS)},
-                   {sx + sw,        (float)(y + TS)},
+                   {sx,             (float)(y + spikeH)},
+                   {sx + sw,        (float)(y + spikeH)},
                    {30, 30, 40, 220});
     }
     if (Settings::highContrast) DrawRectangleLinesEx(t.rect, 2, WHITE);
@@ -291,6 +339,26 @@ static void drawTile(const LevelTile &t) {
   }
 
   DrawRectangleRec(t.rect, baseColor);
+
+  // Bevel/3D effect on solid tiles
+  if (t.type == TileType::SOLID) {
+    Color light = ColorBrightness(baseColor, 0.35f);
+    Color dark  = ColorBrightness(baseColor, -0.35f);
+    DrawRectangle(x, y, TS, 2, light);           // top edge
+    DrawRectangle(x, y, 2, TS, light);           // left edge
+    DrawRectangle(x, y + TS - 2, TS, 2, dark);  // bottom edge
+    DrawRectangle(x + TS - 2, y, 2, TS, dark);  // right edge
+  }
+
+  // Inner gradient on fire/water tiles (lighter at top)
+  if (t.type == TileType::FIRE || t.type == TileType::WATER) {
+    int bandH = drawH / 3;
+    if (bandH < 1) bandH = 1;
+    for (int band = 0; band < 3; band++) {
+      unsigned char a = (unsigned char)(50 - band * 20); // 50, 30, 10
+      DrawRectangle(x, y + band * bandH, TS, bandH, {255, 255, 255, a});
+    }
+  }
 
   if (Settings::highContrast)
     DrawRectangleLinesEx(t.rect, 2, WHITE);
@@ -308,7 +376,7 @@ static void drawTile(const LevelTile &t) {
       break;
     case TileType::FIRE:
       // chevron / zigzag (ascending diagonal, distinct from vertical)
-      for (int row = 0; row < TS; row += 7) {
+      for (int row = 0; row < drawH; row += 7) {
         for (int col = 0; col < TS - 4; col += 8) {
           DrawLine(x + col,     y + row + 4, x + col + 4, y + row,     {255, 255, 255, 220});
           DrawLine(x + col + 4, y + row,     x + col + 8, y + row + 4, {255, 255, 255, 220});
@@ -317,7 +385,7 @@ static void drawTile(const LevelTile &t) {
       break;
     case TileType::WATER:
       // sine-wave approximation (horizontal undulation, distinct from fire chevrons)
-      for (int row = 4; row < TS; row += 7) {
+      for (int row = 4; row < drawH; row += 7) {
         for (int col = 0; col < TS - 1; col++) {
           int y0 = (int)(std::sin((col)      * 0.4f) * 2.0f);
           int y1 = (int)(std::sin((col + 1)  * 0.4f) * 2.0f);
@@ -335,7 +403,7 @@ static void drawTile(const LevelTile &t) {
     case TileType::SPIKE:
       // vertical lines (distinct from diagonal/wave/dot patterns)
       for (int col = 4; col < TS; col += 6)
-        DrawLine(x + col, y, x + col, y + TS, {255, 255, 255, 220});
+        DrawLine(x + col, y, x + col, y + drawH, {255, 255, 255, 220});
       break;
     }
   }
@@ -389,6 +457,7 @@ void Game::runLevel() {
     postUpdateObjects(solids); // carry, push, gates, falling, etc.
 
     // Death: hazard tiles, hazard objects, or falling off the bottom — always respawn both
+    // t.rect is the hazard zone (top half); player dies if they overlap it
     bool death = false;
     for (auto &t : tiles) {
       if (t.type == TileType::FIRE  && CheckCollisionRecs(p2.getBody(), t.rect)) death = true;
@@ -431,6 +500,12 @@ void Game::runLevel() {
   // --- Render game world to offscreen texture ---
   BeginTextureMode(renderTarget);
   ClearBackground(Settings::highContrast ? DARKGRAY : WHITE);
+
+  // Background dot grid pattern
+  for (int dx = 0; dx < Config::WIDTH; dx += 64)
+    for (int dy = 0; dy < Config::HEIGHT; dy += 64)
+      DrawRectangle(dx, dy, 2, 2, {200, 200, 200, 80});
+
   for (auto &t : tiles)
     drawTile(t);
   drawObjects();
@@ -474,8 +549,24 @@ void Game::runLevel() {
   DrawText("ESC: Pause", 4, 4, 14, DARKGRAY);
   if (winTimer > 0.0f) {
     DrawRectangle(0, 0, W, H, {0, 0, 0, 160});
+
+    // Expanding rings emanating from center
+    float elapsed = 2.0f - winTimer; // 0..2
+    for (int i = 0; i < 4; i++) {
+      float ringT = elapsed - i * 0.3f;
+      if (ringT > 0.0f) {
+        float radius = ringT * 200.0f;
+        unsigned char ra = (unsigned char)std::max(0.0f, 180.0f - ringT * 120.0f);
+        DrawRing({(float)(W/2), (float)(H/2)}, radius - 2, radius + 2, 0, 360, 36, {255, 255, 0, ra});
+      }
+    }
+
+    // Scale text up from small
     const char *msg = "YOU WIN!";
-    DrawText(msg, W / 2 - MeasureText(msg, 60) / 2, H / 2 - 30, 60, YELLOW);
+    float scale = std::min(1.0f, elapsed * 2.0f); // reaches full size at 0.5s
+    int fontSize = (int)(60 * scale);
+    if (fontSize < 8) fontSize = 8;
+    DrawText(msg, W / 2 - MeasureText(msg, fontSize) / 2, H / 2 - fontSize / 2, fontSize, YELLOW);
   }
   if (paused)
     pauseMenu.draw();
@@ -499,8 +590,11 @@ void Game::runLevelEditor() {
 
 std::vector<Rectangle> Game::buildSolids() const {
   std::vector<Rectangle> s;
-  for (auto &t : tiles)
+  for (auto &t : tiles) {
     if (t.type == TileType::SOLID) s.push_back(t.rect);
+    if (t.type == TileType::FIRE || t.type == TileType::WATER || t.type == TileType::SPIKE)
+      s.push_back(t.solidRect);  // bottom half is walkable ground
+  }
   for (auto &o : objects) {
     switch (o.type) {
     case ObjType::PRESSURE_PLATE:
@@ -734,11 +828,20 @@ void Game::drawObjects() {
           float bx = o.rect.x + o.rect.width * i / 4.0f;
           DrawRectangle((int)bx - 2, (int)o.rect.y, 4, (int)o.rect.height, {50,90,200,255});
         }
+      } else {
+        // Shimmer effect when gate is open (transitioning)
+        float shimmer = std::sin((float)GetTime() * 8.0f) * 0.5f + 0.5f;
+        unsigned char sa = (unsigned char)(shimmer * 80);
+        DrawRectangleRec(o.rect, {180, 220, 255, sa});
       }
       snprintf(buf, sizeof(buf), "%d", o.linkId);
       DrawText(buf, (int)o.rect.x + 3, (int)o.rect.y + 3, 11, WHITE);
       break;
     case ObjType::MOVING_PLATFORM: {
+      // Bobbing shadow beneath platform
+      DrawEllipse((int)(o.rect.x + o.rect.width * 0.5f),
+                  (int)(o.rect.y + o.rect.height + 4),
+                  o.rect.width * 0.4f, 3.0f, {0, 0, 0, 50});
       float dx = o.endpoint.x - o.origin.x;
       float dy = o.endpoint.y - o.origin.y;
       float len = sqrtf(dx*dx + dy*dy);
@@ -777,6 +880,14 @@ void Game::drawObjects() {
         float phase = o.tParam / (o.speed * 0.5f); // 0..1 within active half
         float bx = o.rect.x + phase * (o.rect.width - 4);
         DrawRectangle((int)bx, (int)o.rect.y, 4, (int)o.rect.height, {255, 255, 220, 180});
+        // Random jagged crackle lines
+        for (int j = 0; j < 4; j++) {
+          int x1 = GetRandomValue((int)o.rect.x, (int)(o.rect.x + o.rect.width));
+          int y1 = GetRandomValue((int)o.rect.y, (int)(o.rect.y + o.rect.height));
+          int x2 = x1 + GetRandomValue(-6, 6);
+          int y2 = y1 + GetRandomValue(-4, 4);
+          DrawLine(x1, y1, x2, y2, {255, 255, 200, 220});
+        }
       }
       break;
     default: break;

@@ -14,7 +14,8 @@ enum class GameState : uint16_t { MENU, LEVEL_SELECT, LEVEL, LEVEL_EDITOR, EXIT 
 
 struct LevelTile {
   TileType type;
-  Rectangle rect;
+  Rectangle rect;       // full tile or hazard visual (top half for hazards)
+  Rectangle solidRect;  // walkable portion (bottom half for hazards, same as rect for solid)
 };
 
 class Game {
